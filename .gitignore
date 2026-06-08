@@ -1,5 +1,6 @@
 .idea/
-.target/
-.secret/
+target/
+secret/
+temp/
 
 *.env

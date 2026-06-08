@@ -2,100 +2,282 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Kafka Producer</title>
+    <title>Kafka Producer - Message History</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
-            background: #f5f5f5;
         }
+
         .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .form-section, .history-section {
             background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
         }
-        h1 {
-            color: #333;
-            margin-top: 0;
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
         }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 25px;
+        }
+
         .form-group {
             margin-bottom: 20px;
         }
+
         label {
             display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #555;
-        }
-        input, textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
             font-size: 14px;
-            box-sizing: border-box;
         }
-        input:focus, textarea:focus {
-            outline: none;
-            border-color: #4CAF50;
+
+        label::after {
+            content: " *";
+            color: red;
         }
+
+        input[type="text"],
         textarea {
-            height: 120px;
-            resize: vertical;
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-family: inherit;
         }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
         .button-group {
             display: flex;
             gap: 10px;
             margin-top: 20px;
         }
+
         button {
             flex: 1;
             padding: 12px 20px;
-            font-size: 16px;
-            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
             border: none;
-            border-radius: 5px;
-            transition: all 0.3s;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
         }
+
         .btn-send {
-            background-color: #4CAF50;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .btn-send:hover {
-            background-color: #45a049;
+
+        .btn-send:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
         }
+
         .btn-clear {
-            background-color: #f44336;
+            background: #f5f5f5;
+            color: #666;
+        }
+
+        .btn-clear:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-clear-history {
+            background: #ff6b6b;
             color: white;
         }
-        .btn-clear:hover {
-            background-color: #da190b;
+
+        .btn-clear-history:hover {
+            background: #ff5252;
         }
+
         button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
         }
-        .message {
-            margin-top: 20px;
-            padding: 12px;
-            border-radius: 5px;
-            display: none;
+
+        .history-list {
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 15px;
         }
-        .message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            display: block;
+
+        .message-card {
+            background: #f8f9fa;
+            border-left: 4px solid #4CAF50;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease;
+            transition: all 0.3s ease;
         }
-        .message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
+
+        .message-card.error {
+            border-left-color: #f44336;
+            background: #ffebee;
         }
+
+        .message-card.info {
+            border-left-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .message-status {
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .message-status.success {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .message-status.error {
+            background: #f44336;
+            color: white;
+        }
+
+        .message-status.info {
+            background: #2196F3;
+            color: white;
+        }
+
+        .message-time {
+            color: #999;
+            font-size: 11px;
+        }
+
+        .message-topic {
+            background: #e0e0e0;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+
+        .message-details {
+            margin-top: 8px;
+        }
+
+        .message-label {
+            font-weight: 600;
+            color: #555;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .message-text {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 4px;
+            margin-bottom: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
+        .response-text {
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 4px;
+            font-size: 12px;
+            color: #666;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+
+        .empty-history {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+
+        .stats {
+            background: #f0f0f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
         .loading {
             display: inline-block;
             width: 14px;
@@ -105,112 +287,303 @@
             border-top-color: transparent;
             animation: spin 0.6s linear infinite;
             margin-right: 8px;
+            vertical-align: middle;
         }
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        .info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            display: block;
+
+        .info-text {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>🚀 Kafka Message Producer</h1>
-
-    <form id="kafkaForm">
-        <div class="form-group">
-            <label for="topic">Topic Name *</label>
-            <input type="text" id="topic" name="topic"
-                   placeholder="e.g., test-topic" required>
+    <!-- Form Section -->
+    <div class="form-section">
+        <div class="header">
+            <h1>📤 Send Kafka Message</h1>
+            <p>Fill in the form to send messages to Kafka topic</p>
         </div>
 
-        <div class="form-group">
-            <label for="kafkaAddress">Kafka Address *</label>
-            <input type="text" id="kafkaAddress" name="kafkaAddress"
-                   value="localhost:9092"
-                   placeholder="localhost:9092" required>
+        <div class="content">
+            <form id="kafkaForm">
+                <div class="form-group">
+                    <label for="topic">Topic Name</label>
+                    <input type="text" id="topic" name="topic"
+                           placeholder="e.g., test-topic, user-events, orders"
+                           autocomplete="off"
+                           value="TEST_TOPIC">
+                    <div class="info-text">Enter the Kafka topic name</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="kafkaAddress">Kafka Address</label>
+                    <input type="text" id="kafkaAddress" name="kafkaAddress"
+                           placeholder="e.g., localhost:29092"
+                           autocomplete="off"
+                           value="localhost:29092">
+                    <div class="info-text">Kafka broker address (host:port)</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="messageText">Message Text</label>
+                    <textarea id="messageText" name="messageText"
+                              placeholder="Enter your message here..."></textarea>
+                    <div class="info-text">The message content to send to Kafka</div>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn-send" id="sendBtn">
+                        📤 SEND
+                    </button>
+                    <button type="button" class="btn-clear" id="clearBtn">
+                        🗑️ CLEAR FORM
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- History Section -->
+    <div class="history-section">
+        <div class="header">
+            <h1>📜 Message History</h1>
+            <p>All sent messages (newest first)</p>
         </div>
 
-        <div class="form-group">
-            <label for="messageText">Message Text *</label>
-            <textarea id="messageText" name="messageText"
-                      placeholder="Enter your message here..." required></textarea>
-        </div>
+        <div class="content">
+            <div class="stats" id="stats">
+                <span>📊 Total messages: <span id="totalCount">0</span></span>
+                <span>✅ Success: <span id="successCount">0</span></span>
+                <span>❌ Failed: <span id="errorCount">0</span></span>
+            </div>
 
-        <div class="button-group">
-            <button type="submit" class="btn-send" id="sendBtn">
-                📤 Send Message
-            </button>
-            <button type="button" class="btn-clear" id="clearBtn">
-                🗑️ Clear
-            </button>
-        </div>
-    </form>
+            <div style="margin-bottom: 15px; text-align: right;">
+                <button type="button" class="btn-clear-history" id="clearHistoryBtn" style="padding: 8px 15px; font-size: 12px;">
+                    🗑️ Clear All History
+                </button>
+            </div>
 
-    <div id="messageContainer"></div>
+            <div id="historyList" class="history-list">
+                <div class="empty-history">
+                    ✨ No messages yet<br>
+                    Send your first message!
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
+    // Message history array (newest first)
+    let messagesHistory = [];
+
+    // DOM elements
     const form = document.getElementById('kafkaForm');
     const sendBtn = document.getElementById('sendBtn');
     const clearBtn = document.getElementById('clearBtn');
-    const messageContainer = document.getElementById('messageContainer');
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    const historyListDiv = document.getElementById('historyList');
 
-    function showMessage(type, text) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
-        messageDiv.innerHTML = text;
-        messageContainer.innerHTML = '';
-        messageContainer.appendChild(messageDiv);
-
-        if (type === 'success') {
-            setTimeout(() => {
-                if (messageDiv.parentNode === messageContainer) {
-                    messageDiv.remove();
-                }
-            }, 5000);
+    // Load history from localStorage
+    function loadHistory() {
+        const saved = localStorage.getItem('kafkaMessageHistory');
+        if (saved) {
+            messagesHistory = JSON.parse(saved);
+            renderHistory();
         }
     }
 
+    // Save history to localStorage
+    function saveHistory() {
+        localStorage.setItem('kafkaMessageHistory', JSON.stringify(messagesHistory));
+    }
+
+    // Add message to history (newest first)
+    function addToHistory(message) {
+        messagesHistory.unshift(message); // Add to beginning (newest first)
+        saveHistory();
+        renderHistory();
+    }
+
+    // Clear all history
+    function clearHistory() {
+        if (confirm('Are you sure you want to clear all message history?')) {
+            messagesHistory = [];
+            saveHistory();
+            renderHistory();
+        }
+    }
+
+    // Update statistics
+    function updateStats() {
+        const total = messagesHistory.length;
+        const success = messagesHistory.filter(m => m.status === 'success').length;
+        const error = messagesHistory.filter(m => m.status === 'error').length;
+
+        document.getElementById('totalCount').textContent = total;
+        document.getElementById('successCount').textContent = success;
+        document.getElementById('errorCount').textContent = error;
+    }
+
+    // Format time
+    function formatTime(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+
+    // Get status icon
+    function getStatusIcon(status) {
+        switch(status) {
+            case 'success': return '✅';
+            case 'error': return '❌';
+            default: return 'ℹ️';
+        }
+    }
+
+    // Escape HTML and preserve formatting
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Render history with fixed spacing
+    function renderHistory() {
+        if (messagesHistory.length === 0) {
+            historyListDiv.innerHTML = `
+                <div class="empty-history">
+                    ✨ No messages yet<br>
+                    Send your first message!
+                </div>
+            `;
+            updateStats();
+            return;
+        }
+
+        const historyHtml = messagesHistory.map(msg => `
+            <div class="message-card ${msg.status}">
+                <div class="message-header">
+                    <div>
+                        <span class="message-status ${msg.status}">
+                            ${getStatusIcon(msg.status)} ${msg.status.toUpperCase()}
+                        </span>
+                        <span class="message-topic" style="margin-left: 8px;">
+                            📁 ${escapeHtml(msg.topic)}
+                        </span>
+                    </div>
+                    <div class="message-time">
+                        🕐 ${formatTime(msg.timestamp)}
+                    </div>
+                </div>
+                <div class="message-details">
+                    <div style="margin-bottom: 8px;">
+                        <div class="message-label">📡 Kafka Address:</div>
+                        <div style="font-size: 13px; font-family: monospace;">${escapeHtml(msg.kafkaAddress)}</div>
+                    </div>
+                    <div>
+                        <div class="message-label">💬 Message:</div>
+                        <div class="message-text">${escapeHtml(msg.messageText)}</div>
+                    </div>
+                    ${msg.responseMessage ? `
+                        <div style="margin-top: 8px;">
+                            <div class="message-label">📋 Response:</div>
+                            <div class="response-text">${escapeHtml(msg.responseMessage)}</div>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        historyListDiv.innerHTML = historyHtml;
+        updateStats();
+
+        // Scroll to top of history
+        historyListDiv.scrollTop = 0;
+    }
+
+    // Show temporary message (for validation errors)
+    function showTemporaryMessage(type, text) {
+        const tempMessage = {
+            status: type,
+            topic: 'System',
+            kafkaAddress: '-',
+            messageText: text,
+            responseMessage: text,
+            timestamp: Date.now()
+        };
+        addToHistory(tempMessage);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            const index = messagesHistory.findIndex(m => m.timestamp === tempMessage.timestamp);
+            if (index !== -1) {
+                messagesHistory.splice(index, 1);
+                saveHistory();
+                renderHistory();
+            }
+        }, 5000);
+    }
+
+    // Clear form fields
     function clearForm() {
         document.getElementById('topic').value = '';
         document.getElementById('kafkaAddress').value = 'localhost:9092';
         document.getElementById('messageText').value = '';
-        showMessage('info', '✓ Form has been cleared');
+        showTemporaryMessage('info', '✨ Form has been cleared');
     }
 
+    // Validate form
     function validateForm() {
         const topic = document.getElementById('topic').value.trim();
         const kafkaAddress = document.getElementById('kafkaAddress').value.trim();
         const messageText = document.getElementById('messageText').value.trim();
 
         if (!topic) {
-            showMessage('error', '❌ Please enter a topic name');
+            showTemporaryMessage('error', '❌ Please enter a topic name');
             return false;
         }
+
         if (!kafkaAddress) {
-            showMessage('error', '❌ Please enter a Kafka address');
+            showTemporaryMessage('error', '❌ Please enter a Kafka address');
             return false;
         }
+
         if (!messageText) {
-            showMessage('error', '❌ Please enter a message text');
+            showTemporaryMessage('error', '❌ Please enter a message text');
             return false;
         }
 
         // Validate Kafka address format
         const kafkaPattern = /^[a-zA-Z0-9.-]+:\d+$/;
         if (!kafkaPattern.test(kafkaAddress)) {
-            showMessage('error', '❌ Invalid Kafka address format. Expected: host:port (e.g., localhost:9092)');
+            showTemporaryMessage('error', '❌ Invalid Kafka address format. Expected: host:port (e.g., localhost:9092)');
             return false;
         }
 
         return true;
     }
 
+    // Send message to Kafka
     async function sendMessage(event) {
         event.preventDefault();
 
@@ -222,9 +595,12 @@
         const kafkaAddress = document.getElementById('kafkaAddress').value.trim();
         const messageText = document.getElementById('messageText').value.trim();
 
+        // Disable send button
         sendBtn.disabled = true;
-        const originalText = sendBtn.innerHTML;
-        sendBtn.innerHTML = '<span class="loading"></span> Sending...';
+        const originalButtonText = sendBtn.innerHTML;
+        sendBtn.innerHTML = '<span class="loading"></span> SENDING...';
+
+        const startTime = Date.now();
 
         try {
             const response = await fetch('/api/kafka/send', {
@@ -240,31 +616,78 @@
             });
 
             const data = await response.json();
+            const endTime = Date.now();
+            const duration = endTime - startTime;
 
             if (response.ok && data.status === 'success') {
-                showMessage('success', `
-                    ✅ <strong>Success!</strong><br>
-                    Topic: ${data.topic}<br>
-                    Kafka: ${data.kafkaAddress}<br>
-                    ${data.message}<br>
-                    <small>${new Date(data.timestamp).toLocaleString()}</small>
-                `);
+                // Add success message to history
+                addToHistory({
+                    status: 'success',
+                    topic: topic,
+                    kafkaAddress: kafkaAddress,
+                    messageText: messageText,
+                    responseMessage: `${data.message} (${duration}ms)`,
+                    timestamp: Date.now()
+                });
             } else {
-                showMessage('error', `❌ Error: ${data.message || 'Unknown error'}`);
+                // Add error message to history
+                addToHistory({
+                    status: 'error',
+                    topic: topic,
+                    kafkaAddress: kafkaAddress,
+                    messageText: messageText,
+                    responseMessage: data.message || 'Unknown error',
+                    timestamp: Date.now()
+                });
             }
         } catch (error) {
-            showMessage('error', `❌ Connection error: ${error.message}. Make sure the server is running.`);
+            // Add connection error to history
+            addToHistory({
+                status: 'error',
+                topic: topic,
+                kafkaAddress: kafkaAddress,
+                messageText: messageText,
+                responseMessage: `Connection error: ${error.message}`,
+                timestamp: Date.now()
+            });
         } finally {
+            // Re-enable send button
             sendBtn.disabled = false;
-            sendBtn.innerHTML = originalText;
+            sendBtn.innerHTML = originalButtonText;
         }
     }
 
+    // Event listeners
     form.addEventListener('submit', sendMessage);
     clearBtn.addEventListener('click', clearForm);
+    clearHistoryBtn.addEventListener('click', clearHistory);
 
-    // Show initial message
-    showMessage('info', '✨ Ready to send messages! Fill in the form and click Send.');
+    // Load history on page load
+    loadHistory();
+
+    // Add keyboard shortcut (Ctrl+Enter) for sending
+    document.getElementById('messageText').addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            sendMessage(e);
+        }
+    });
+
+    // Add welcome message if history is empty
+    if (messagesHistory.length === 0) {
+        setTimeout(() => {
+            if (messagesHistory.length === 0) {
+                addToHistory({
+                    status: 'info',
+                    topic: 'Welcome',
+                    kafkaAddress: '-',
+                    messageText: 'Welcome to Kafka Message Producer! Send your first message using the form on the left.',
+                    responseMessage: 'New messages will appear here with the newest on top.',
+                    timestamp: Date.now()
+                });
+            }
+        }, 500);
+    }
 </script>
 </body>
 </html>
