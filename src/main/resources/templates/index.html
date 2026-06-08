@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Kafka Producer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        textarea {
+            height: 120px;
+            resize: vertical;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .btn-send {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-send:hover {
+            background-color: #45a049;
+        }
+        .btn-clear {
+            background-color: #f44336;
+            color: white;
+        }
+        .btn-clear:hover {
+            background-color: #da190b;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 5px;
+            display: none;
+        }
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid white;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🚀 Kafka Message Producer</h1>
+
+    <form id="kafkaForm">
+        <div class="form-group">
+            <label for="topic">Topic Name *</label>
+            <input type="text" id="topic" name="topic"
+                   placeholder="e.g., test-topic" required>
+        </div>
+
+        <div class="form-group">
+            <label for="kafkaAddress">Kafka Address *</label>
+            <input type="text" id="kafkaAddress" name="kafkaAddress"
+                   value="localhost:9092"
+                   placeholder="localhost:9092" required>
+        </div>
+
+        <div class="form-group">
+            <label for="messageText">Message Text *</label>
+            <textarea id="messageText" name="messageText"
+                      placeholder="Enter your message here..." required></textarea>
+        </div>
+
+        <div class="button-group">
+            <button type="submit" class="btn-send" id="sendBtn">
+                📤 Send Message
+            </button>
+            <button type="button" class="btn-clear" id="clearBtn">
+                🗑️ Clear
+            </button>
+        </div>
+    </form>
+
+    <div id="messageContainer"></div>
+</div>
+
+<script>
+    const form = document.getElementById('kafkaForm');
+    const sendBtn = document.getElementById('sendBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const messageContainer = document.getElementById('messageContainer');
+
+    function showMessage(type, text) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        messageDiv.innerHTML = text;
+        messageContainer.innerHTML = '';
+        messageContainer.appendChild(messageDiv);
+
+        if (type === 'success') {
+            setTimeout(() => {
+                if (messageDiv.parentNode === messageContainer) {
+                    messageDiv.remove();
+                }
+            }, 5000);
+        }
+    }
+
+    function clearForm() {
+        document.getElementById('topic').value = '';
+        document.getElementById('kafkaAddress').value = 'localhost:9092';
+        document.getElementById('messageText').value = '';
+        showMessage('info', '✓ Form has been cleared');
+    }
+
+    function validateForm() {
+        const topic = document.getElementById('topic').value.trim();
+        const kafkaAddress = document.getElementById('kafkaAddress').value.trim();
+        const messageText = document.getElementById('messageText').value.trim();
+
+        if (!topic) {
+            showMessage('error', '❌ Please enter a topic name');
+            return false;
+        }
+        if (!kafkaAddress) {
+            showMessage('error', '❌ Please enter a Kafka address');
+            return false;
+        }
+        if (!messageText) {
+            showMessage('error', '❌ Please enter a message text');
+            return false;
+        }
+
+        // Validate Kafka address format
+        const kafkaPattern = /^[a-zA-Z0-9.-]+:\d+$/;
+        if (!kafkaPattern.test(kafkaAddress)) {
+            showMessage('error', '❌ Invalid Kafka address format. Expected: host:port (e.g., localhost:9092)');
+            return false;
+        }
+
+        return true;
+    }
+
+    async function sendMessage(event) {
+        event.preventDefault();
+
+        if (!validateForm()) {
+            return;
+        }
+
+        const topic = document.getElementById('topic').value.trim();
+        const kafkaAddress = document.getElementById('kafkaAddress').value.trim();
+        const messageText = document.getElementById('messageText').value.trim();
+
+        sendBtn.disabled = true;
+        const originalText = sendBtn.innerHTML;
+        sendBtn.innerHTML = '<span class="loading"></span> Sending...';
+
+        try {
+            const response = await fetch('/api/kafka/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    topic: topic,
+                    kafkaAddress: kafkaAddress,
+                    messageText: messageText
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.status === 'success') {
+                showMessage('success', `
+                    ✅ <strong>Success!</strong><br>
+                    Topic: ${data.topic}<br>
+                    Kafka: ${data.kafkaAddress}<br>
+                    ${data.message}<br>
+                    <small>${new Date(data.timestamp).toLocaleString()}</small>
+                `);
+            } else {
+                showMessage('error', `❌ Error: ${data.message || 'Unknown error'}`);
+            }
+        } catch (error) {
+            showMessage('error', `❌ Connection error: ${error.message}. Make sure the server is running.`);
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = originalText;
+        }
+    }
+
+    form.addEventListener('submit', sendMessage);
+    clearBtn.addEventListener('click', clearForm);
+
+    // Show initial message
+    showMessage('info', '✨ Ready to send messages! Fill in the form and click Send.');
+</script>
+</body>
+</html>
