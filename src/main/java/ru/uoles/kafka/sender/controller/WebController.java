@@ -4,19 +4,30 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+/**
+ * Контроллер HTML-страниц веб-интерфейса отправки сообщений.
+ */
 @Controller
 @RequestMapping("/web")
 public class WebController {
 
+    /**
+     * Открывает форму отправки сообщения.
+     *
+     * @return имя Thymeleaf-шаблона страницы
+     */
     @GetMapping("/send-message")
     public String showForm() {
         return "index";
     }
 
-    // Если нужно открывать без /web
+    /**
+     * Открывает главную страницу веб-интерфейса.
+     *
+     * @return имя Thymeleaf-шаблона страницы
+     */
     @GetMapping({"/", "/index"})
     public String home() {
         return "index";
     }
 }
-

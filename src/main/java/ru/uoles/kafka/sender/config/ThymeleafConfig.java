@@ -8,9 +8,17 @@ import org.thymeleaf.spring6.templateresolver.SpringResourceTemplateResolver;
 import org.thymeleaf.spring6.view.ThymeleafViewResolver;
 import org.thymeleaf.templatemode.TemplateMode;
 
+/**
+ * Настройка разрешения и обработки Thymeleaf-шаблонов.
+ */
 @Configuration
 public class ThymeleafConfig {
 
+    /**
+     * Создаёт резолвер шаблонов из classpath-каталога templates.
+     *
+     * @return настроенный резолвер ресурсов Thymeleaf
+     */
     @Bean
     public SpringResourceTemplateResolver templateResolver() {
         SpringResourceTemplateResolver templateResolver = new SpringResourceTemplateResolver();
@@ -21,6 +29,11 @@ public class ThymeleafConfig {
         return templateResolver;
     }
 
+    /**
+     * Создаёт движок обработки Thymeleaf-шаблонов.
+     *
+     * @return настроенный движок шаблонов
+     */
     @Bean
     public SpringTemplateEngine templateEngine() {
         SpringTemplateEngine templateEngine = new SpringTemplateEngine();
@@ -29,6 +42,11 @@ public class ThymeleafConfig {
         return templateEngine;
     }
 
+    /**
+     * Создаёт UTF-8 резолвер представлений Spring MVC.
+     *
+     * @return настроенный резолвер представлений
+     */
     @Bean
     public ViewResolver viewResolver() {
         ThymeleafViewResolver viewResolver = new ThymeleafViewResolver();
