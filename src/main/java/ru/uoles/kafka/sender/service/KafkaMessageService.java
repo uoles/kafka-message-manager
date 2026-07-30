@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Сервис формирования Kafka-продюсера и отправки сообщений.
@@ -44,26 +46,24 @@ public class KafkaMessageService {
         props.put(ProducerConfig.RETRIES_CONFIG, 3);
         props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, 1000);
 
+        props.put(ProducerConfig.LINGER_MS_CONFIG, 100);
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 30000);
+        props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120000);
+
         DefaultKafkaProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(props);
         KafkaTemplate<String, String> kafkaTemplate = new KafkaTemplate<>(producerFactory);
 
         try {
             ProducerRecord<String, String> record = new ProducerRecord<>(topic, messageText);
             parsedHeaders.forEach(header -> record.headers().add(header));
-            kafkaTemplate.send(record).whenComplete((result, ex) -> {
-                if (ex == null) {
-                    log.info("Message sent successfully to topic: {}, partition: {}, offset: {}",
-                            topic, result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
-                } else {
-                    log.error("Failed to send message to topic: {}", topic, ex);
-                }
-            });
-
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
+            var result = kafkaTemplate.send(record).get(10, TimeUnit.SECONDS);
+            log.info("Message sent successfully to topic: {}, partition: {}, offset: {}",
+                    topic, result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted while sending message", e);
-            throw new RuntimeException("Failed to send message to Kafka", e);
+            throw new RuntimeException("Interrupted while sending message to Kafka", exception);
+        } catch (TimeoutException exception) {
+            throw new RuntimeException("Timed out while sending message to Kafka", exception);
         } finally {
             kafkaTemplate.destroy();
             producerFactory.destroy();

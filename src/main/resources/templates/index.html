@@ -25,6 +25,7 @@
     <ul class="nav nav-tabs" id="kafkaTabs" role="tablist">
         <li class="nav-item" role="presentation"><button class="nav-link active" id="send-tab" data-bs-toggle="tab" data-bs-target="#send-pane" type="button" role="tab" aria-controls="send-pane" aria-selected="true">Send message</button></li>
         <li class="nav-item" role="presentation"><button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab" aria-controls="history-pane" aria-selected="false">Message history</button></li>
+        <li class="nav-item" role="presentation"><button class="nav-link" id="consumers-tab" data-bs-toggle="tab" data-bs-target="#consumers-pane" type="button" role="tab" aria-controls="consumers-pane" aria-selected="false">Consumers</button></li>
     </ul>
     <div class="tab-content bg-white border border-top-0 rounded-bottom shadow-sm p-3 p-lg-4" id="kafkaTabsContent">
         <section class="tab-pane fade show active" id="send-pane" role="tabpanel" aria-labelledby="send-tab">
@@ -39,6 +40,16 @@
                     <div class="d-flex flex-column flex-sm-row gap-2"><button type="submit" class="btn btn-primary flex-fill" id="sendBtn">&#128225; Send message</button><button type="button" class="btn btn-outline-secondary flex-fill" id="clearBtn">Clear form</button></div>
                 </form>
             </div></div></div></div>
+        </section>
+        <section class="tab-pane fade" id="consumers-pane" role="tabpanel" aria-labelledby="consumers-tab">
+            <h2 class="h4 mb-1">Kafka consumers</h2>
+            <p class="text-muted">Create a consumer and monitor messages received from its topic.</p>
+            <form id="consumerForm" class="row g-3 align-items-end mb-4">
+                <div class="col-12 col-md-5"><label for="consumerBootstrapAddress" class="form-label">Bootstrap address</label><input id="consumerBootstrapAddress" class="form-control" value="localhost:29092" required></div>
+                <div class="col-12 col-md-5"><label for="consumerTopic" class="form-label">Topic</label><input id="consumerTopic" class="form-control" required></div>
+                <div class="col-12 col-md-2"><button id="createConsumerBtn" class="btn btn-primary w-100" type="submit">Create consumer</button></div>
+            </form>
+            <div id="consumerTabs" class="text-muted">No consumers created.</div>
         </section>
         <section class="tab-pane fade" id="history-pane" role="tabpanel" aria-labelledby="history-tab">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h2 class="h4 mb-1">Message history</h2><p class="text-muted mb-0">Review sent messages and resend any valid message.</p></div><button type="button" class="btn btn-outline-danger" id="clearHistoryBtn">Clear history</button></div>

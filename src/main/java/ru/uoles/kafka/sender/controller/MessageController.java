@@ -5,12 +5,23 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ru.uoles.kafka.sender.model.CreateConsumerRequest;
+import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
+import ru.uoles.kafka.sender.model.ConsumerResponse;
+import ru.uoles.kafka.sender.service.KafkaConsumerManager;
+
+import java.util.List;
+import java.util.UUID;
+
 import ru.uoles.kafka.sender.model.MessageRequest;
 import ru.uoles.kafka.sender.model.MessageResponse;
 import ru.uoles.kafka.sender.service.KafkaMessageService;
@@ -25,6 +36,7 @@ import ru.uoles.kafka.sender.service.KafkaMessageService;
 public class MessageController {
 
     private final KafkaMessageService kafkaMessageService;
+    private final KafkaConsumerManager kafkaConsumerManager;
 
     /**
      * Отправляет сообщение в Kafka на основании тела запроса.
@@ -91,6 +103,49 @@ public class MessageController {
      *
      * @return успешный HTTP-ответ со статусом сервиса
      */
+    @PostMapping("/consumers")
+    public ResponseEntity<ConsumerResponse> createConsumer(@Valid @RequestBody CreateConsumerRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(kafkaConsumerManager.create(request.getBootstrapAddress(), request.getTopic()));
+    }
+
+    @GetMapping("/consumers")
+    public ResponseEntity<List<ConsumerResponse>> listConsumers() {
+        return ResponseEntity.ok(kafkaConsumerManager.list());
+    }
+
+    @GetMapping("/consumers/{id}")
+    public ResponseEntity<ConsumerResponse> getConsumer(@PathVariable UUID id) {
+        return ResponseEntity.ok(kafkaConsumerManager.get(id));
+    }
+
+    @GetMapping("/consumers/{id}/messages")
+    public ResponseEntity<ConsumerMessagesResponse> getConsumerMessages(@PathVariable UUID id,
+                                                                          @RequestParam(defaultValue = "0") long after,
+                                                                          @RequestParam(defaultValue = "100") int limit) {
+        return ResponseEntity.ok(kafkaConsumerManager.messages(id, after, limit));
+    }
+
+    @DeleteMapping("/consumers/{id}")
+    public ResponseEntity<Void> deleteConsumer(@PathVariable UUID id) {
+        kafkaConsumerManager.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @ExceptionHandler(KafkaConsumerManager.ConsumerNotFoundException.class)
+    public ResponseEntity<MessageResponse> handleConsumerNotFound(KafkaConsumerManager.ConsumerNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
+    }
+
+    @ExceptionHandler(KafkaConsumerManager.ConsumerLimitException.class)
+    public ResponseEntity<MessageResponse> handleConsumerLimit(KafkaConsumerManager.ConsumerLimitException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
+    }
+
+//    @ExceptionHandler(IllegalArgumentException.class)
+//    public ResponseEntity<MessageResponse> handleInvalidConsumerParameter(IllegalArgumentException exception) {
+//        return ResponseEntity.badRequest().body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
+//    }
+
     @GetMapping("/health")
     public ResponseEntity<MessageResponse> healthCheck() {
         MessageResponse response = new MessageResponse(

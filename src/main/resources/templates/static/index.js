@@ -5,6 +5,114 @@ const clearBtn = document.getElementById('clearBtn');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const historyListDiv = document.getElementById('historyList');
 const headersInput = document.getElementById('headers');
+const consumerForm = document.getElementById('consumerForm');
+const consumerTabs = document.getElementById('consumerTabs');
+const consumers = new Map();
+const consumerTimers = new Map();
+const consumerCursors = new Map();
+const consumerInFlight = new Set();
+const consumerErrors = new Map();
+const consumerMessages = new Map();
+
+async function createConsumer(event) {
+    event.preventDefault();
+    const button = document.getElementById('createConsumerBtn');
+    button.disabled = true;
+    try {
+        const response = await fetch('/api/kafka/consumers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bootstrapAddress: document.getElementById('consumerBootstrapAddress').value.trim(), topic: document.getElementById('consumerTopic').value.trim() }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Failed to create consumer');
+        const consumer = data;
+        consumers.set(consumer.id, consumer);
+        consumerCursors.set(consumer.id, 0);
+        renderConsumers();
+        pollConsumer(consumer.id);
+        consumerForm.reset();
+    } catch (error) { alert(error.message); } finally { button.disabled = false; }
+}
+
+function renderConsumers() {
+    if (!consumers.size) { consumerTabs.innerHTML = '<div class="text-muted">No consumers created.</div>'; return; }
+    const nav = [...consumers.values()].map((consumer, index) => `<li class="nav-item"><button class="nav-link ${index === 0 ? 'active' : ''}" data-bs-toggle="tab" data-bs-target="#consumer-pane-${consumer.id}" type="button">${escapeHtml(consumer.topic)}</button></li>`).join('');
+    const panes = [...consumers.values()].map((consumer, index) => `<section class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="consumer-pane-${consumer.id}"><div class="d-flex justify-content-between align-items-center mb-3"><div><span class="badge bg-${consumer.status === 'RUNNING' ? 'success' : consumer.status === 'ERROR' ? 'danger' : 'secondary'}">${escapeHtml(consumer.status)}</span> <span class="text-muted">${escapeHtml(consumer.bootstrapAddress)} · group ${escapeHtml(consumer.groupId)}</span>${consumer.lastError ? `<div class="text-danger small">${escapeHtml(consumer.lastError)}</div>` : ''}</div><button class="btn btn-outline-danger btn-sm" data-delete-consumer="${consumer.id}">Delete</button></div><div id="consumer-messages-${consumer.id}" class="table-responsive"><div class="text-muted py-3">Waiting for messages...</div></div></section>`).join('');
+    consumerTabs.innerHTML = `<ul class="nav nav-pills mb-3">${nav}</ul><div class="tab-content">${panes}</div>`;
+    consumers.forEach((consumer, consumerId) => renderConsumerMessages(consumerId));
+}
+
+function renderConsumerMessages(id) {
+    const container = document.getElementById(`consumer-messages-${id}`);
+    if (!container) return;
+    const messages = consumerMessages.get(id) || [];
+    if (!messages.length) return;
+    const rows = messages.map(message => `<tr><td>${escapeHtml(new Date(message.timestamp).toLocaleString())}</td><td>${message.partition}</td><td>${message.offset}</td><td>${escapeHtml(message.key || '')}</td><td class="message-text">${escapeHtml(message.value || '')}</td><td>${escapeHtml((message.headers || []).map(header => `${header.name}=${header.value}`).join(', '))}</td></tr>`).join('');
+    container.innerHTML = `<table class="table table-sm table-hover"><thead><tr><th>Time</th><th>Partition</th><th>Offset</th><th>Key</th><th>Value</th><th>Headers</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function pollConsumer(id) {
+    if (consumerInFlight.has(id)) return;
+    consumerInFlight.add(id);
+    try {
+        const response = await fetch(`/api/kafka/consumers/${id}/messages?after=${consumerCursors.get(id) || 0}&limit=100`);
+        if (response.status === 404) {
+            removeConsumerLocally(id);
+            return;
+        }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Consumer unavailable');
+        const consumer = consumers.get(id);
+        if (!consumer) return;
+        const container = document.getElementById(`consumer-messages-${id}`);
+        const messages = data.messages || [];
+        const knownMessages = consumerMessages.get(id) || [];
+        const knownSequences = new Set(knownMessages.map(message => message.sequence));
+        consumerMessages.set(id, knownMessages.concat(messages.filter(message => !knownSequences.has(message.sequence))));
+        renderConsumerMessages(id);
+        if (messages.length) consumerCursors.set(id, Math.max(...messages.map(message => message.sequence)));
+        consumerErrors.delete(id);
+        if (data.droppedCount > 0 && container) container.insertAdjacentHTML('afterbegin', `<div class="alert alert-warning py-2">Some older messages were dropped because the consumer buffer is full.</div>`);
+    } catch (error) {
+        consumerErrors.set(id, error.message);
+    } finally {
+        consumerInFlight.delete(id);
+    }
+    if (consumers.has(id)) consumerTimers.set(id, setTimeout(() => pollConsumer(id), 2000));
+}
+
+function removeConsumerLocally(id) {
+    clearTimeout(consumerTimers.get(id));
+    consumerTimers.delete(id);
+    consumerInFlight.delete(id);
+    consumers.delete(id);
+    consumerCursors.delete(id);
+    consumerErrors.delete(id);
+    consumerMessages.delete(id);
+    renderConsumers();
+}
+
+async function loadConsumers() {
+    const response = await fetch('/api/kafka/consumers');
+    if (!response.ok) return;
+    const serverConsumers = await response.json();
+    const serverIds = new Set(serverConsumers.map(consumer => consumer.id));
+    [...consumers.keys()].filter(id => !serverIds.has(id)).forEach(removeConsumerLocally);
+    serverConsumers.forEach(consumer => {
+        consumers.set(consumer.id, consumer);
+        if (!consumerCursors.has(consumer.id)) consumerCursors.set(consumer.id, 0);
+    });
+    renderConsumers();
+    serverConsumers.forEach(consumer => {
+        if (!consumerTimers.has(consumer.id)) pollConsumer(consumer.id);
+    });
+}
+
+function deleteConsumer(id) {
+    clearTimeout(consumerTimers.get(id));
+    consumerTimers.delete(id);
+    fetch(`/api/kafka/consumers/${id}`, { method: 'DELETE' }).then(response => {
+        if (response.ok || response.status === 404) removeConsumerLocally(id);
+        else throw new Error('Failed to delete consumer');
+    }).catch(error => consumerErrors.set(id, error.message));
+}
 
 function loadHistory() {
     try {
@@ -159,6 +267,11 @@ async function sendMessage(event) {
 }
 
 form.addEventListener('submit', sendMessage);
+consumerForm.addEventListener('submit', createConsumer);
+consumerTabs.addEventListener('click', event => { const button = event.target.closest('[data-delete-consumer]'); if (button) deleteConsumer(button.dataset.deleteConsumer); });
+document.getElementById('consumers-tab').addEventListener('shown.bs.tab', loadConsumers);
+loadConsumers().catch(() => {});
+window.addEventListener('beforeunload', () => consumerTimers.forEach(timer => clearTimeout(timer)));
 clearBtn.addEventListener('click', clearForm);
 clearHistoryBtn.addEventListener('click', clearHistory);
 historyListDiv.addEventListener('click', event => {

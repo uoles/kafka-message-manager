@@ -1,0 +1,152 @@
+package ru.uoles.kafka.sender.service;
+
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.KafkaMessageListenerContainer;
+import org.springframework.stereotype.Service;
+import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
+import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
+import ru.uoles.kafka.sender.model.ConsumerResponse;
+import ru.uoles.kafka.sender.model.ConsumerStatus;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Управляет динамическими Kafka-потребителями и их буферами сообщений. */
+@Service
+@Slf4j
+public class KafkaConsumerManager {
+    private static final int BUFFER_CAPACITY = 500;
+    private static final int MAX_CONSUMERS = 5;
+    private static final int MAX_PAGE_SIZE = 200;
+    private final Map<UUID, ManagedConsumer> consumers = new ConcurrentHashMap<>();
+
+    /** Создаёт и запускает потребителя. */
+    public synchronized ConsumerResponse create(String bootstrapAddress, String topic) {
+        if (consumers.size() >= MAX_CONSUMERS) throw new ConsumerLimitException();
+        UUID id = UUID.randomUUID();
+        String groupId = "kafka-message-manager-" + id;
+        ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(BUFFER_CAPACITY);
+
+        Map<String, Object> props = Map.of(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress,
+                ConsumerConfig.GROUP_ID_CONFIG, groupId,
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest",
+                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+
+        DefaultKafkaConsumerFactory<String, String> factory = new DefaultKafkaConsumerFactory<>(props);
+        ManagedConsumer managed = new ManagedConsumer(id, bootstrapAddress, topic, groupId, buffer, factory);
+        ContainerProperties properties = new ContainerProperties(topic);
+        properties.setMessageListener((org.springframework.kafka.listener.MessageListener<String, String>) buffer::add);
+        KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(factory, properties);
+        managed.container = container;
+        consumers.put(id, managed);
+        try {
+            container.start();
+            managed.status = ConsumerStatus.RUNNING;
+            return managed.response();
+        } catch (RuntimeException exception) {
+            consumers.remove(id);
+            managed.status = ConsumerStatus.ERROR;
+            managed.lastError = safeError(exception);
+            destroy(managed);
+            throw new ConsumerStartException("Failed to start Kafka consumer", exception);
+        }
+    }
+
+    public List<ConsumerResponse> list() { return consumers.values().stream().map(ManagedConsumer::response).toList(); }
+    public ConsumerResponse get(UUID id) { return require(id).response(); }
+
+    public ConsumerMessagesResponse messages(UUID id, long after, int limit) {
+        if (after < 0) throw new IllegalArgumentException("after must not be negative");
+        if (limit < 1) throw new IllegalArgumentException("limit must be positive");
+        ManagedConsumer consumer = require(id);
+        List<ConsumerMessageResponse> messages = consumer.buffer.after(after, Math.min(limit, MAX_PAGE_SIZE));
+        return new ConsumerMessagesResponse(id, messages, consumer.buffer.oldestSequence(), consumer.buffer.nextSequence(), consumer.buffer.droppedCount());
+    }
+
+    public synchronized void delete(UUID id) {
+        ManagedConsumer consumer = require(id);
+        consumers.remove(id);
+        consumer.status = ConsumerStatus.STOPPED;
+        destroy(consumer);
+    }
+
+    @PreDestroy
+    public synchronized void shutdown() {
+        new ArrayList<>(consumers.values()).forEach(consumer -> {
+            consumers.remove(consumer.id);
+            consumer.status = ConsumerStatus.STOPPED;
+            destroy(consumer);
+        });
+    }
+
+    private void destroy(ManagedConsumer consumer) {
+        try {
+            if (consumer.container != null) consumer.container.stop();
+        } catch (RuntimeException exception) {
+            log.warn("Failed to stop consumer {}", consumer.id, exception);
+        } finally {
+            consumer.factory.getListeners().clear();
+        }
+    }
+
+    private ManagedConsumer require(UUID id) {
+        ManagedConsumer consumer = consumers.get(id);
+        if (consumer == null) throw new ConsumerNotFoundException(id);
+        return consumer;
+    }
+
+    private static String safeError(Throwable exception) {
+        return exception.getMessage() == null || exception.getMessage().isBlank()
+                ? exception.getClass().getSimpleName() : exception.getMessage();
+    }
+
+    public static class ConsumerNotFoundException extends RuntimeException {
+        public ConsumerNotFoundException(UUID id) { super("Consumer not found: " + id); }
+    }
+    public static class ConsumerLimitException extends RuntimeException {
+        public ConsumerLimitException() { super("Maximum number of consumers reached"); }
+    }
+    public static class ConsumerStartException extends RuntimeException {
+        public ConsumerStartException(String message, Throwable cause) { super(message, cause); }
+    }
+
+    private static final class ManagedConsumer {
+        private final UUID id;
+        private final String bootstrapAddress;
+        private final String topic;
+        private final String groupId;
+        private final Instant createdAt = Instant.now();
+        private final ConsumerMessageBuffer buffer;
+        private final DefaultKafkaConsumerFactory<String, String> factory;
+        private KafkaMessageListenerContainer<String, String> container;
+        private volatile ConsumerStatus status = ConsumerStatus.STARTING;
+        private volatile String lastError;
+
+        private ManagedConsumer(UUID id, String bootstrapAddress, String topic, String groupId,
+                                ConsumerMessageBuffer buffer, DefaultKafkaConsumerFactory<String, String> factory) {
+            this.id = id;
+            this.bootstrapAddress = bootstrapAddress;
+            this.topic = topic;
+            this.groupId = groupId;
+            this.buffer = buffer;
+            this.factory = factory;
+        }
+
+        private ConsumerResponse response() {
+            return new ConsumerResponse(id, bootstrapAddress, topic, groupId, status, createdAt,
+                    buffer.size(), buffer.droppedCount(), lastError);
+        }
+    }
+}
