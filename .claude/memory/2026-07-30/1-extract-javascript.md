@@ -1,4 +1,4 @@
-# Task 6: Extract page JavaScript
+# Task 1: Extract page JavaScript
 **Date:** 2026-07-30
 **Status:** Completed
 

@@ -30,4 +30,5 @@ When you complete a task or user asks to save task results:
 
 How to Determine Task Number
 
-Check existing files in .claude/memory/{current_date}/ and increment the highest number.
+1. Check existing files in .claude/memory/{current_date}/ and increment the highest number.
+2. Every new folder task number starts from 1.
