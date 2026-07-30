@@ -3,6 +3,8 @@ package ru.uoles.kafka.sender.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.ViewResolver;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.thymeleaf.spring6.templateresolver.SpringResourceTemplateResolver;
 import org.thymeleaf.spring6.view.ThymeleafViewResolver;
@@ -12,7 +14,18 @@ import org.thymeleaf.templatemode.TemplateMode;
  * Настройка разрешения и обработки Thymeleaf-шаблонов.
  */
 @Configuration
-public class ThymeleafConfig {
+public class ThymeleafConfig implements WebMvcConfigurer {
+
+    /**
+     * Настраивает раздачу JavaScript-файлов из каталога templates/static.
+     *
+     * @param registry реестр обработчиков статических ресурсов
+     */
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/static/**")
+                .addResourceLocations("classpath:/templates/static/");
+    }
 
     /**
      * Создаёт резолвер шаблонов из classpath-каталога templates.
