@@ -1,6 +1,8 @@
 package ru.uoles.kafka.sender.service;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -12,6 +14,7 @@ import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
 import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
 import ru.uoles.kafka.sender.model.ConsumerResponse;
 import ru.uoles.kafka.sender.model.ConsumerStatus;
+import ru.uoles.kafka.sender.repository.KafkaInfoRepository;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,46 +23,52 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Управляет динамическими Kafka-потребителями и их буферами сообщений. */
-@Service
+/** Управляет динамическими Kafka-потребителями и их сохранением в SQLite. */
 @Slf4j
+@Service
+@RequiredArgsConstructor
 public class KafkaConsumerManager {
-    private static final int BUFFER_CAPACITY = 500;
     private static final int MAX_CONSUMERS = 5;
     private static final int MAX_PAGE_SIZE = 200;
+    private final int bufferCapacity = 500;
+
+    private final KafkaInfoRepository repository;
     private final Map<UUID, ManagedConsumer> consumers = new ConcurrentHashMap<>();
 
-    /** Создаёт и запускает потребителя. */
+    /** Восстанавливает сохранённых потребителей после создания Spring-контекста. */
+    @PostConstruct
+    public synchronized void restoreConsumers() {
+        repository.findAllConsumers().forEach(record -> {
+            try {
+                ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(bufferCapacity, repository.findMessages(record.id()), record.nextSequence(), record.droppedCount());
+                ManagedConsumer managed = startManaged(record.id(), record.bootstrapAddress(), record.topic(), record.groupId(), record.createdAt(), buffer);
+                consumers.put(record.id(), managed);
+                managed.status = ConsumerStatus.RUNNING;
+                repository.saveConsumer(managed.record());
+            } catch (RuntimeException exception) {
+                log.error("Failed to restore consumer {}", record.id(), exception);
+                repository.saveConsumer(new KafkaInfoRepository.ConsumerRecord(record.id(), record.bootstrapAddress(), record.topic(), record.groupId(), record.createdAt(), ConsumerStatus.ERROR, safeError(exception), record.droppedCount(), record.nextSequence()));
+            }
+        });
+    }
+
+    /** Создаёт и запускает нового потребителя, сохраняя его описание. */
     public synchronized ConsumerResponse create(String bootstrapAddress, String topic) {
         if (consumers.size() >= MAX_CONSUMERS) throw new ConsumerLimitException();
         UUID id = UUID.randomUUID();
         String groupId = "kafka-message-manager-" + id;
-        ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(BUFFER_CAPACITY);
-
-        Map<String, Object> props = Map.of(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress,
-                ConsumerConfig.GROUP_ID_CONFIG, groupId,
-                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
-                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
-                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest",
-                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
-
-        DefaultKafkaConsumerFactory<String, String> factory = new DefaultKafkaConsumerFactory<>(props);
-        ManagedConsumer managed = new ManagedConsumer(id, bootstrapAddress, topic, groupId, buffer, factory);
-        ContainerProperties properties = new ContainerProperties(topic);
-        properties.setMessageListener((org.springframework.kafka.listener.MessageListener<String, String>) buffer::add);
-        KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(factory, properties);
-        managed.container = container;
-        consumers.put(id, managed);
+        Instant createdAt = Instant.now();
+        ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(bufferCapacity);
+        KafkaInfoRepository.ConsumerRecord initial = new KafkaInfoRepository.ConsumerRecord(id, bootstrapAddress, topic, groupId, createdAt, ConsumerStatus.STARTING, null, 0, 1);
+        repository.saveConsumer(initial);
         try {
-            container.start();
+            ManagedConsumer managed = startManaged(id, bootstrapAddress, topic, groupId, createdAt, buffer);
+            consumers.put(id, managed);
             managed.status = ConsumerStatus.RUNNING;
+            repository.saveConsumer(managed.record());
             return managed.response();
         } catch (RuntimeException exception) {
-            consumers.remove(id);
-            managed.status = ConsumerStatus.ERROR;
-            managed.lastError = safeError(exception);
-            destroy(managed);
+            repository.deleteConsumer(id);
             throw new ConsumerStartException("Failed to start Kafka consumer", exception);
         }
     }
@@ -75,13 +84,16 @@ public class KafkaConsumerManager {
         return new ConsumerMessagesResponse(id, messages, consumer.buffer.oldestSequence(), consumer.buffer.nextSequence(), consumer.buffer.droppedCount());
     }
 
+    /** Останавливает потребителя и удаляет его журнал из базы. */
     public synchronized void delete(UUID id) {
         ManagedConsumer consumer = require(id);
         consumers.remove(id);
         consumer.status = ConsumerStatus.STOPPED;
         destroy(consumer);
+        repository.deleteConsumer(id);
     }
 
+    /** Останавливает контейнеры, оставляя данные для следующего запуска. */
     @PreDestroy
     public synchronized void shutdown() {
         new ArrayList<>(consumers.values()).forEach(consumer -> {
@@ -89,6 +101,37 @@ public class KafkaConsumerManager {
             consumer.status = ConsumerStatus.STOPPED;
             destroy(consumer);
         });
+    }
+
+    private ManagedConsumer startManaged(UUID id, String bootstrapAddress, String topic, String groupId,
+                                         Instant createdAt, ConsumerMessageBuffer buffer) {
+        Map<String, Object> props = Map.of(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress,
+                ConsumerConfig.GROUP_ID_CONFIG, groupId, ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class, ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest",
+                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+        DefaultKafkaConsumerFactory<String, String> factory = new DefaultKafkaConsumerFactory<>(props);
+        ManagedConsumer managed = new ManagedConsumer(id, bootstrapAddress, topic, groupId, createdAt, buffer, factory);
+        ContainerProperties properties = new ContainerProperties(topic);
+        properties.setMessageListener((org.springframework.kafka.listener.MessageListener<String, String>) record -> {
+            ConsumerMessageBuffer.AddResult result = managed.buffer.add(record);
+            try {
+                // Журнал в SQLite сохраняется полностью, даже если запись вытеснена из оперативного буфера.
+                repository.saveMessage(id, result.added(), result.droppedCount(), result.nextSequence());
+            } catch (RuntimeException exception) {
+                managed.lastError = safeError(exception);
+                managed.status = ConsumerStatus.ERROR;
+                log.error("Failed to persist message for consumer {}", id, exception);
+            }
+        });
+        KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(factory, properties);
+        managed.container = container;
+        try {
+            container.start();
+            return managed;
+        } catch (RuntimeException exception) {
+            destroy(managed);
+            throw exception;
+        }
     }
 
     private void destroy(ManagedConsumer consumer) {
@@ -108,45 +151,37 @@ public class KafkaConsumerManager {
     }
 
     private static String safeError(Throwable exception) {
-        return exception.getMessage() == null || exception.getMessage().isBlank()
-                ? exception.getClass().getSimpleName() : exception.getMessage();
+        return exception.getMessage() == null || exception.getMessage().isBlank() ? exception.getClass().getSimpleName() : exception.getMessage();
     }
 
-    public static class ConsumerNotFoundException extends RuntimeException {
-        public ConsumerNotFoundException(UUID id) { super("Consumer not found: " + id); }
-    }
-    public static class ConsumerLimitException extends RuntimeException {
-        public ConsumerLimitException() { super("Maximum number of consumers reached"); }
-    }
-    public static class ConsumerStartException extends RuntimeException {
-        public ConsumerStartException(String message, Throwable cause) { super(message, cause); }
-    }
+    public static class ConsumerNotFoundException extends RuntimeException { public ConsumerNotFoundException(UUID id) { super("Consumer not found: " + id); } }
+    public static class ConsumerLimitException extends RuntimeException { public ConsumerLimitException() { super("Maximum number of consumers reached"); } }
+    public static class ConsumerStartException extends RuntimeException { public ConsumerStartException(String message, Throwable cause) { super(message, cause); } }
 
-    private static final class ManagedConsumer {
+    private final class ManagedConsumer {
         private final UUID id;
         private final String bootstrapAddress;
         private final String topic;
         private final String groupId;
-        private final Instant createdAt = Instant.now();
+        private final Instant createdAt;
         private final ConsumerMessageBuffer buffer;
         private final DefaultKafkaConsumerFactory<String, String> factory;
         private KafkaMessageListenerContainer<String, String> container;
         private volatile ConsumerStatus status = ConsumerStatus.STARTING;
         private volatile String lastError;
 
-        private ManagedConsumer(UUID id, String bootstrapAddress, String topic, String groupId,
+        private ManagedConsumer(UUID id, String bootstrapAddress, String topic, String groupId, Instant createdAt,
                                 ConsumerMessageBuffer buffer, DefaultKafkaConsumerFactory<String, String> factory) {
-            this.id = id;
-            this.bootstrapAddress = bootstrapAddress;
-            this.topic = topic;
-            this.groupId = groupId;
-            this.buffer = buffer;
-            this.factory = factory;
+            this.id = id; this.bootstrapAddress = bootstrapAddress; this.topic = topic; this.groupId = groupId;
+            this.createdAt = createdAt; this.buffer = buffer; this.factory = factory;
+        }
+
+        private KafkaInfoRepository.ConsumerRecord record() {
+            return new KafkaInfoRepository.ConsumerRecord(id, bootstrapAddress, topic, groupId, createdAt, status, lastError, buffer.droppedCount(), buffer.nextSequence());
         }
 
         private ConsumerResponse response() {
-            return new ConsumerResponse(id, bootstrapAddress, topic, groupId, status, createdAt,
-                    buffer.size(), buffer.droppedCount(), lastError);
+            return new ConsumerResponse(id, bootstrapAddress, topic, groupId, status, createdAt, buffer.size(), buffer.droppedCount(), lastError);
         }
     }
 }
