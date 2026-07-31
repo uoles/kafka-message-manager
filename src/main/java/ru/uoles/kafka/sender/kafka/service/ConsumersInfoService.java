@@ -6,7 +6,7 @@ import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
 import java.util.List;
 import java.util.UUID;
 
-public interface KafkaInfoService {
+public interface ConsumersInfoService {
 
     void saveConsumer(ConsumersRepository.ConsumerRecord consumer);
 

@@ -13,7 +13,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KafkaInfoServiceImpl implements KafkaInfoService {
+public class ConsumersInfoServiceImpl implements ConsumersInfoService {
 
     private final ConsumersRepository consumersRepository;
     private final MessagesRepository messagesRepository;

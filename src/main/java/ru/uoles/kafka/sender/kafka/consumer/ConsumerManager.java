@@ -12,7 +12,7 @@ import org.springframework.kafka.listener.KafkaMessageListenerContainer;
 import org.springframework.stereotype.Component;
 import ru.uoles.kafka.sender.enums.ConsumerStatus;
 import ru.uoles.kafka.sender.kafka.repository.ConsumersRepository;
-import ru.uoles.kafka.sender.kafka.service.KafkaInfoService;
+import ru.uoles.kafka.sender.kafka.service.ConsumersInfoService;
 import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
 import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
 import ru.uoles.kafka.sender.model.ConsumerResponse;
@@ -34,22 +34,22 @@ public class ConsumerManager {
     private static final int MAX_PAGE_SIZE = 200;
     private final int bufferCapacity = 500;
 
-    private final KafkaInfoService kafkaInfoService;
+    private final ConsumersInfoService consumersInfoService;
     private final Map<UUID, ManagedConsumer> consumers = new ConcurrentHashMap<>();
 
     /** Восстанавливает сохранённых потребителей после создания Spring-контекста. */
     @PostConstruct
     public synchronized void restoreConsumers() {
-        kafkaInfoService.findAllConsumers().forEach(record -> {
+        consumersInfoService.findAllConsumers().forEach(record -> {
             try {
-                ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(bufferCapacity, kafkaInfoService.findMessages(record.id()), record.nextSequence(), record.droppedCount());
+                ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(bufferCapacity, consumersInfoService.findMessages(record.id()), record.nextSequence(), record.droppedCount());
                 ManagedConsumer managed = startManaged(record.id(), record.bootstrapAddress(), record.topic(), record.groupId(), record.createdAt(), buffer);
                 consumers.put(record.id(), managed);
                 managed.status = ConsumerStatus.RUNNING;
-                kafkaInfoService.saveConsumer(managed.record());
+                consumersInfoService.saveConsumer(managed.record());
             } catch (RuntimeException exception) {
                 log.error("Failed to restore consumer {}", record.id(), exception);
-                kafkaInfoService.saveConsumer(new ConsumersRepository.ConsumerRecord(record.id(), record.bootstrapAddress(), record.topic(), record.groupId(), record.createdAt(), ConsumerStatus.ERROR, safeError(exception), record.droppedCount(), record.nextSequence()));
+                consumersInfoService.saveConsumer(new ConsumersRepository.ConsumerRecord(record.id(), record.bootstrapAddress(), record.topic(), record.groupId(), record.createdAt(), ConsumerStatus.ERROR, safeError(exception), record.droppedCount(), record.nextSequence()));
             }
         });
     }
@@ -62,15 +62,15 @@ public class ConsumerManager {
         Instant createdAt = Instant.now();
         ConsumerMessageBuffer buffer = new ConsumerMessageBuffer(bufferCapacity);
         ConsumersRepository.ConsumerRecord initial = new ConsumersRepository.ConsumerRecord(id, bootstrapAddress, topic, groupId, createdAt, ConsumerStatus.STARTING, null, 0, 1);
-        kafkaInfoService.saveConsumer(initial);
+        consumersInfoService.saveConsumer(initial);
         try {
             ManagedConsumer managed = startManaged(id, bootstrapAddress, topic, groupId, createdAt, buffer);
             consumers.put(id, managed);
             managed.status = ConsumerStatus.RUNNING;
-            kafkaInfoService.saveConsumer(managed.record());
+            consumersInfoService.saveConsumer(managed.record());
             return managed.response();
         } catch (RuntimeException exception) {
-            kafkaInfoService.deleteConsumer(id);
+            consumersInfoService.deleteConsumer(id);
             throw new ConsumerStartException("Failed to start Kafka consumer", exception);
         }
     }
@@ -92,7 +92,7 @@ public class ConsumerManager {
         consumers.remove(id);
         consumer.status = ConsumerStatus.STOPPED;
         destroy(consumer);
-        kafkaInfoService.deleteConsumer(id);
+        consumersInfoService.deleteConsumer(id);
     }
 
     /** Останавливает контейнеры, оставляя данные для следующего запуска. */
@@ -118,7 +118,7 @@ public class ConsumerManager {
             ConsumerMessageBuffer.AddResult result = managed.buffer.add(record);
             try {
                 // Журнал в SQLite сохраняется полностью, даже если запись вытеснена из оперативного буфера.
-                kafkaInfoService.saveMessage(id, result.added(), result.droppedCount(), result.nextSequence());
+                consumersInfoService.saveMessage(id, result.added(), result.droppedCount(), result.nextSequence());
             } catch (RuntimeException exception) {
                 managed.lastError = safeError(exception);
                 managed.status = ConsumerStatus.ERROR;
