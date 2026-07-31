@@ -1,4 +1,4 @@
-package ru.uoles.kafka.sender.service;
+package ru.uoles.kafka.sender.kafka.consumer;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
@@ -11,6 +11,7 @@ import java.util.List;
 
 /** Потокобезопасный ограниченный буфер сообщений потребителя. */
 final class ConsumerMessageBuffer {
+
     private final int capacity;
     private final ArrayDeque<ConsumerMessageResponse> messages = new ArrayDeque<>();
     private long nextSequence;

@@ -17,14 +17,14 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.uoles.kafka.sender.model.CreateConsumerRequest;
 import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
 import ru.uoles.kafka.sender.model.ConsumerResponse;
-import ru.uoles.kafka.sender.service.KafkaConsumerManager;
+import ru.uoles.kafka.sender.kafka.consumer.ConsumerManager;
 
 import java.util.List;
 import java.util.UUID;
 
 import ru.uoles.kafka.sender.model.MessageRequest;
 import ru.uoles.kafka.sender.model.MessageResponse;
-import ru.uoles.kafka.sender.service.KafkaMessageService;
+import ru.uoles.kafka.sender.kafka.service.KafkaMessageService;
 
 /**
  * REST-контроллер отправки сообщений в Kafka и проверки состояния сервиса.
@@ -36,7 +36,7 @@ import ru.uoles.kafka.sender.service.KafkaMessageService;
 public class MessageController {
 
     private final KafkaMessageService kafkaMessageService;
-    private final KafkaConsumerManager kafkaConsumerManager;
+    private final ConsumerManager consumerManager;
 
     /**
      * Отправляет сообщение в Kafka на основании тела запроса.
@@ -105,39 +105,39 @@ public class MessageController {
      */
     @PostMapping("/consumers")
     public ResponseEntity<ConsumerResponse> createConsumer(@Valid @RequestBody CreateConsumerRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(kafkaConsumerManager.create(request.getBootstrapAddress(), request.getTopic()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(consumerManager.create(request.getBootstrapAddress(), request.getTopic()));
     }
 
     @GetMapping("/consumers")
     public ResponseEntity<List<ConsumerResponse>> listConsumers() {
-        return ResponseEntity.ok(kafkaConsumerManager.list());
+        return ResponseEntity.ok(consumerManager.list());
     }
 
     @GetMapping("/consumers/{id}")
     public ResponseEntity<ConsumerResponse> getConsumer(@PathVariable UUID id) {
-        return ResponseEntity.ok(kafkaConsumerManager.get(id));
+        return ResponseEntity.ok(consumerManager.get(id));
     }
 
     @GetMapping("/consumers/{id}/messages")
     public ResponseEntity<ConsumerMessagesResponse> getConsumerMessages(@PathVariable UUID id,
                                                                           @RequestParam(defaultValue = "0") long after,
                                                                           @RequestParam(defaultValue = "100") int limit) {
-        return ResponseEntity.ok(kafkaConsumerManager.messages(id, after, limit));
+        return ResponseEntity.ok(consumerManager.messages(id, after, limit));
     }
 
     @DeleteMapping("/consumers/{id}")
     public ResponseEntity<Void> deleteConsumer(@PathVariable UUID id) {
-        kafkaConsumerManager.delete(id);
+        consumerManager.delete(id);
         return ResponseEntity.noContent().build();
     }
 
-    @ExceptionHandler(KafkaConsumerManager.ConsumerNotFoundException.class)
-    public ResponseEntity<MessageResponse> handleConsumerNotFound(KafkaConsumerManager.ConsumerNotFoundException exception) {
+    @ExceptionHandler(ConsumerManager.ConsumerNotFoundException.class)
+    public ResponseEntity<MessageResponse> handleConsumerNotFound(ConsumerManager.ConsumerNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
     }
 
-    @ExceptionHandler(KafkaConsumerManager.ConsumerLimitException.class)
-    public ResponseEntity<MessageResponse> handleConsumerLimit(KafkaConsumerManager.ConsumerLimitException exception) {
+    @ExceptionHandler(ConsumerManager.ConsumerLimitException.class)
+    public ResponseEntity<MessageResponse> handleConsumerLimit(ConsumerManager.ConsumerLimitException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
     }
 

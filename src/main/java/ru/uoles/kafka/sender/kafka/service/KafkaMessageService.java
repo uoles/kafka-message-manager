@@ -1,4 +1,4 @@
-package ru.uoles.kafka.sender.service;
+package ru.uoles.kafka.sender.kafka.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +9,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import ru.uoles.kafka.sender.kafka.utils.HeaderUtils;
 
 import java.util.HashMap;
 import java.util.List;
@@ -35,7 +36,7 @@ public class KafkaMessageService {
      * @throws ExecutionException если Kafka сообщает об ошибке выполнения отправки
      */
     public void sendMessage(String topic, String kafkaAddress, String messageText, String headers) throws ExecutionException {
-        List<Header> parsedHeaders = KafkaHeaderParser.parse(headers);
+        List<Header> parsedHeaders = HeaderUtils.parse(headers);
         log.info("Creating producer for topic: {}, kafka address: {}", topic, kafkaAddress);
 
         Map<String, Object> props = new HashMap<>();

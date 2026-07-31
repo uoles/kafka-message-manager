@@ -1,5 +1,7 @@
 package ru.uoles.kafka.sender.model;
 
+import ru.uoles.kafka.sender.enums.ConsumerStatus;
+
 import java.time.Instant;
 import java.util.UUID;
 

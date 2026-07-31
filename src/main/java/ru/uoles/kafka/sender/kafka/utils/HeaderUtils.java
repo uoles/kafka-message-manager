@@ -1,4 +1,4 @@
-package ru.uoles.kafka.sender.service;
+package ru.uoles.kafka.sender.kafka.utils;
 
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
@@ -12,10 +12,10 @@ import java.util.Set;
 /**
  * Разбирает строковое представление заголовков Kafka.
  */
-public final class KafkaHeaderParser {
+public final class HeaderUtils {
 
     /** Запрещает создание экземпляров служебного класса парсера. */
-    private KafkaHeaderParser() {
+    private HeaderUtils() {
     }
 
     /**

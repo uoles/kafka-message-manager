@@ -1,4 +1,4 @@
-package ru.uoles.kafka.sender.service;
+package ru.uoles.kafka.sender.kafka.consumer;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -9,12 +9,13 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.KafkaMessageListenerContainer;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
 import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
 import ru.uoles.kafka.sender.model.ConsumerResponse;
-import ru.uoles.kafka.sender.model.ConsumerStatus;
-import ru.uoles.kafka.sender.repository.KafkaInfoRepository;
+import ru.uoles.kafka.sender.enums.ConsumerStatus;
+import ru.uoles.kafka.sender.kafka.repository.KafkaInfoRepository;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,9 +26,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Управляет динамическими Kafka-потребителями и их сохранением в SQLite. */
 @Slf4j
-@Service
+@Component
 @RequiredArgsConstructor
-public class KafkaConsumerManager {
+public class ConsumerManager {
+
     private static final int MAX_CONSUMERS = 5;
     private static final int MAX_PAGE_SIZE = 200;
     private final int bufferCapacity = 500;

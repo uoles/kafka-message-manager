@@ -1,4 +1,4 @@
-package ru.uoles.kafka.sender.model;
+package ru.uoles.kafka.sender.enums;
 
 /** Состояние жизненного цикла Kafka-потребителя. */
 public enum ConsumerStatus {
