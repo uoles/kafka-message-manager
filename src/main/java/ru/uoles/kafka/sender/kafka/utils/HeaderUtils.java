@@ -1,7 +1,11 @@
 package ru.uoles.kafka.sender.kafka.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
+import ru.uoles.kafka.sender.model.ConsumerMessageResponse;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -14,9 +18,10 @@ import java.util.Set;
  */
 public final class HeaderUtils {
 
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
     /** Запрещает создание экземпляров служебного класса парсера. */
-    private HeaderUtils() {
-    }
+    private HeaderUtils() {}
 
     /**
      * Преобразует строку заголовков в список Kafka-заголовков.
@@ -53,5 +58,21 @@ public final class HeaderUtils {
             parsedHeaders.add(new RecordHeader(name, value.getBytes(StandardCharsets.UTF_8)));
         }
         return List.copyOf(parsedHeaders);
+    }
+
+    public static String serializeHeaders(List<ConsumerMessageResponse.ConsumerHeaderResponse> headers) {
+        try {
+            return objectMapper.writeValueAsString(headers);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Cannot serialize Kafka headers", exception);
+        }
+    }
+
+    public static List<ConsumerMessageResponse.ConsumerHeaderResponse> deserializeHeaders(String headers) {
+        try {
+            return objectMapper.readValue(headers, new TypeReference<>() {});
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Cannot deserialize Kafka headers", exception);
+        }
     }
 }
