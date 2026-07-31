@@ -1,68 +1,78 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working in this repository.
 
 ## Project overview
 
-`kafka-message-manager` is a small Spring Boot 3.5 service for sending messages to Kafka through both a JSON API and a Thymeleaf web form. The application is configured for Java 23 and Maven.
+`kafka-message-manager` is a Spring Boot 3.5 service for sending messages to Kafka and managing dynamic Kafka consumers through a JSON API and a Thymeleaf/Bootstrap browser UI. The project uses Maven and requires JDK 23. Application code is rooted at `ru.uoles.kafka.sender`; keep new Spring components below that package unless component scanning is deliberately changed.
 
 ## Development commands
 
-Run these commands from the repository root:
+Run commands from the repository root:
 
 ```bash
-# Compile and package (also runs tests)
+# Compile, run verification, and package
 mvn clean package
 
-# Run the application in development mode
-mvn spring-boot:run
-
-# Run all tests without packaging
+# Run all tests
 mvn test
 
-# Run one test class
+# Run one test class or method
 mvn -Dtest=ClassNameTest test
-
-# Run one test method
 mvn -Dtest=ClassNameTest#methodName test
+
+# Start the application
+mvn spring-boot:run
 
 # Start the local Kafka, Zookeeper, and Kafka UI stack
 docker compose -f docker/kafka/docker-compose.yml up -d
 
 # Stop the local Kafka stack
 docker compose -f docker/kafka/docker-compose.yml down
+
+# Check the service health endpoint
+curl http://localhost:8080/api/kafka/health
 ```
 
-There is currently no separate lint or formatting plugin configured in `pom.xml`; `mvn test` and `mvn package` are the available Maven verification commands. The project requires a JDK 23 toolchain (`maven.compiler.source`/`target` are both `23`). The repository currently has no `src/test` sources, so a test command may report that no tests were found.
+The Maven build has no separate lint or formatting plugin. `spring-boot-starter-test` is present, but there are currently no `src/test` sources, so `mvn test` may report that no tests were found. Use a JDK 23 toolchain; `pom.xml` sets both compiler source and target to `23`.
 
-When the Docker stack is running, the externally advertised Kafka bootstrap address is `localhost:29092`, Kafka UI is at `http://localhost:8089/`, and the Spring application listens on `http://localhost:8080/`.
+The Docker stack advertises Kafka to the host at `localhost:29092`, exposes Kafka UI at `http://localhost:8089/`, and uses `kafka:9092` for broker connections from other containers. The application listens on port `8080`. The web controller currently maps the UI under `/web/`, `/web/index`, and `/web/send-message`; the README's bare `/` URL is not mapped by `WebController`.
 
 ## Architecture
 
-- `Application` is the Spring Boot entry point. Component scanning starts at `ru.uoles.kafka.sender`, so application classes should remain under that package (or configuration must be changed deliberately).
-- `MessageController` exposes the REST API under `/api/kafka`. `POST /api/kafka/send` accepts a validated `MessageRequest` (`topic`, `kafkaAddress`, and `messageText`), delegates to `KafkaMessageService`, and returns a `MessageResponse`; consumer resources are managed through `POST/GET /api/kafka/consumers`, `GET /api/kafka/consumers/{id}`, `GET /api/kafka/consumers/{id}/messages?after=&limit=`, and `DELETE /api/kafka/consumers/{id}`. `GET /api/kafka/health` is a simple service health response.
-- `KafkaMessageService` creates a Kafka producer factory and `KafkaTemplate` dynamically for each send request using the caller-provided bootstrap address. It uses string serializers, `acks=all`, retries, bounded acknowledgement waiting, and deterministic cleanup. `KafkaConsumerManager` owns bounded consumer containers and in-memory message buffers, while `KafkaInfoRepository` persists consumer definitions and received messages in SQLite at the URL configured by `spring.datasource.url` (currently `jdbc:sqlite:database/kafka-info.db`). The `consumers` table stores consumer identity, broker/topic/group configuration, lifecycle state, dropped-message count, and sequence high-water mark; the `messages` table stores received records and JSON Kafka headers with a cascading consumer foreign key. Consumers and their retained message logs are restored during application startup, explicit deletion removes their database rows and messages, and application shutdown stops containers without deleting persisted definitions.
-- Consumer message polling uses an exclusive local sequence cursor. Responses include `oldestSequence`, `nextSequence`, and cumulative `droppedCount`; clients must advance their cursor using returned message sequences and account for buffer eviction. Each received record is persisted when the Kafka listener receives it, including its local sequence and headers.
-- Liquibase is configured through `liquibase-core` and `spring.liquibase.change-log=classpath:liquibase/changelog-master.xml`. The master changelog includes formatted SQL files under `src/main/resources/liquibase/scripts/tables/`; migrations own creation of the `consumers` and `messages` tables. `SQLiteDatabaseConfig` only exposes `JdbcTemplate`; do not duplicate table creation in Java when changing the schema. `spring.datasource.url` is the single source of truth for the SQLite database location; there is no `KafkaPersistenceProperties` class or `kafka.persistence.*` configuration.
-- `WebController` maps `/web/send-message`, `/web/`, `/web/index`, and (through the class-level `/web` mapping) the corresponding web paths to the `index` Thymeleaf view. `ThymeleafConfig` explicitly wires the classpath template resolver, engine, and UTF-8 view resolver; template files live in `src/main/resources/templates/`.
-- `index.html` is a self-contained browser UI. It posts JSON to `/api/kafka/send`, including optional comma-separated `name=value` Kafka headers, performs client-side validation, and stores/renders message history in browser `localStorage` under `kafkaMessageHistory`; history is not persisted by the server or Kafka. The page uses Bootstrap 5.0.2 tabs for sending, message history, and dynamic Kafka consumers. The Message history tab renders a responsive table with Resend controls and headers. The Consumers tab creates process-local consumers with bootstrap address/topic, generates inner tabs, and polls buffered message tables. Resend repopulates topic, broker, headers, and message, then activates the send tab without sending automatically. Browser logic is split by responsibility into `app-state.js`, `history.js`, `consumers.js`, `form.js`, and `init.js` under `src/main/resources/templates/static/`; `index.html` loads them in that dependency order after Bootstrap, and `ThymeleafConfig` serves them under `/static/`.
-- `application.properties` sets port 8080, Thymeleaf behavior, logging levels, Kafka producer retries, the SQLite `spring.datasource.url`, and Liquibase changelog settings. The service currently overrides the relevant producer settings when constructing its dynamic producer, so check both the properties file and `KafkaMessageService` when changing Kafka behavior.
-- Liquibase changelogs live under `src/main/resources/liquibase/`: `changelog-master.xml` includes formatted SQL migrations for the `consumers` and `messages` tables. Liquibase owns schema creation and tracking through its changelog tables; do not duplicate migration DDL in Java configuration. The SQLite database path is taken only from `spring.datasource.url`.
-- `SQLiteDatabaseConfig` provides `JdbcTemplate` over Spring Boot's configured `DataSource`; repository code is in `ru.uoles.kafka.sender.repository.KafkaInfoRepository`. There is no separate persistence-properties class or `kafka.persistence.*` configuration.
-- The browser scripts are classic scripts loaded from `index.html` in dependency order: `app-state.js`, `history.js`, `consumers.js`, `form.js`, and `init.js`. Keep Bootstrap loaded before these scripts because resend uses the Bootstrap tab API.
-- `docker/kafka/docker-compose.yml` provides a single-broker Confluent Kafka 6.2.4 setup backed by Zookeeper plus Kafka UI. The host uses `localhost:29092`; containers use the internal `kafka:9092` address.
+### Application and HTTP layers
 
-## Request flow
+- `Application` is the Spring Boot entry point.
+- `MessageController` owns `/api/kafka` and delegates all Kafka operations to services/managers. Endpoints are:
+  - `POST /api/kafka/send` for a validated `MessageRequest` containing `topic`, `kafkaAddress`, `messageText`, and optional comma-separated `headers` (`name=value,name2=value2`).
+  - `POST /api/kafka/consumers`, `GET /api/kafka/consumers`, and `GET /api/kafka/consumers/{id}` for dynamic consumer lifecycle and status.
+  - `GET /api/kafka/consumers/{id}/messages?after=&limit=` for cursor-based message polling.
+  - `DELETE /api/kafka/consumers/{id}` to stop and remove a consumer and its persisted messages.
+  - `GET /api/kafka/health` for a simple health response.
+- `WebController` returns the `index` Thymeleaf view for `/web/send-message`, `/web/`, and `/web/index`. `ThymeleafConfig` explicitly configures the classpath template resolver, UTF-8 engine, view resolver, and static resource handling.
+- `src/main/resources/templates/index.html` is a self-contained UI with Bootstrap tabs for sending messages, browser-local message history, and dynamic consumers. Classic scripts are loaded in dependency order: `app-state.js`, `history.js`, `consumers.js`, `form.js`, then `init.js`. Bootstrap must remain loaded before them because resend and tab behavior use its API.
 
-1. A browser submits the form or another client posts JSON to `/api/kafka/send`.
-2. Spring validation checks `MessageRequest`'s `@NotBlank` fields.
-3. `MessageController` passes the three request values to `KafkaMessageService`.
-4. The service creates a producer for the requested bootstrap address, sends the value to the requested topic, waits briefly for completion, and cleans up producer resources.
-5. The controller returns a status payload; the web page adds the result to local history and renders it newest-first.
+### Kafka sending
 
-## Configuration and conventions
+`KafkaMessageServiceImpl` creates a producer factory and `KafkaTemplate` for each request, using the caller-provided `bootstrap.servers` value and string serializers. Producer settings include `acks=all`, retries, retry backoff, linger, request timeout, and delivery timeout. `HeaderUtils` parses and validates optional `name=value` headers before creating the `ProducerRecord`. Producer resources are destroyed in `finally`; check this service as well as `application.properties` when changing producer behavior.
 
-- Keep API DTOs in `ru.uoles.kafka.sender.model`, HTTP endpoints in `controller`, Kafka integration in `service`, and infrastructure beans in `config`.
-- Use the existing Lombok style (`@Data`, `@RequiredArgsConstructor`, `@Slf4j`) consistently with nearby classes.
-- The request intentionally accepts a Kafka address per request; do not assume the configured local broker is the only target when modifying the API or UI.
-- The Docker README documents the local Kafka endpoints; update it and this file if the compose topology or advertised ports change.
+The broker address is intentionally request-scoped rather than a single application-wide Kafka setting. Do not replace it with the local Docker address without changing the API and UI contract.
+
+### Dynamic consumers
+
+`ConsumerManager` owns process-local `ManagedConsumer` instances and their `KafkaMessageListenerContainer`s. It limits the number of consumers and bounds each in-memory `ConsumerMessageBuffer`. Consumers use generated group IDs, string deserializers, `latest` offset reset, and auto-commit. Startup restores persisted definitions and retained messages; shutdown stops containers while preserving definitions for the next startup.
+
+Each received record gets a local sequence number. `GET .../messages` treats `after` as an exclusive cursor and returns `oldestSequence`, `nextSequence`, and cumulative `droppedCount` along with messages. Clients must advance their cursor from returned sequences and account for buffer eviction. Kafka headers are retained in message responses and persistence.
+
+### SQLite persistence and migrations
+
+`ConsumersRepository` and `MessagesRepository`, coordinated by `ConsumersInfoServiceImpl`, persist consumer definitions and received records through `JdbcTemplate`. SQLite is configured by the single source of truth `spring.datasource.url` (currently `jdbc:sqlite:database/kafka-info.db`); `SQLiteDatabaseConfig` exposes the configured JDBC access.
+
+Liquibase owns schema creation and tracking through `src/main/resources/liquibase/changelog-master.xml`, which includes formatted SQL migrations under `src/main/resources/liquibase/scripts/tables/`. Update the changelog when changing the `consumers` or `messages` schema; do not duplicate table creation in Java. The messages table is tied to consumers with cascading deletion.
+
+## Repository conventions
+
+- Keep DTOs in `ru.uoles.kafka.sender.model`, controllers in `controller`, Kafka integration in `kafka`, repositories in `kafka.repository`, services in `kafka.service`, consumer runtime code in `kafka.consumer`, and infrastructure configuration in `config`.
+- Match the existing Lombok style (`@RequiredArgsConstructor`, `@Slf4j`, and DTO conventions) and Java 23 configuration in nearby code.
+- Keep request validation and HTTP mapping in controllers, Kafka orchestration in services/managers, and SQL access in repositories.
+- When changing Docker broker topology or advertised ports, update both `docker/kafka/README.md` and this file. The repository-specific rules in `.claude/rules/` contain additional project conventions; consult `.claude/rules/README.md` when a change touches architecture, API design, security, migrations, or the web UI.
