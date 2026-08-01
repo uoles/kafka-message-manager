@@ -4,3 +4,4 @@ secret/
 temp/
 
 *.env
+*.db

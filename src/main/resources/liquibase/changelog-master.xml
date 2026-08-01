@@ -6,6 +6,6 @@
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
 
     <include file="scripts/tables/TABLE.CONSUMERS.sql" relativeToChangelogFile="true"/>
-    <include file="scripts/tables/TABLE.MESSAGES.sql" relativeToChangelogFile="true"/>
+    <include file="scripts/tables/TABLE.RECEIVED_MESSAGES.sql" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

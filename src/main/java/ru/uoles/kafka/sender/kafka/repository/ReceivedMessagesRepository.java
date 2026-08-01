@@ -17,20 +17,20 @@ import static ru.uoles.kafka.sender.kafka.utils.HeaderUtils.serializeHeaders;
 /** Репозиторий SQLite для журнала сообщений консьюмеров. */
 @Repository
 @RequiredArgsConstructor
-public class MessagesRepository {
+public class ReceivedMessagesRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
     /** SQL-запрос для сохранения полученного сообщения. */
     private static final String SQL_SAVE_MESSAGE = """
-            INSERT OR REPLACE INTO messages(consumer_id, sequence, message_key, message_value, topic,
+            INSERT OR REPLACE INTO received_messages(consumer_id, sequence, message_key, message_value, topic,
                 partition_number, message_offset, timestamp, headers_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     /** SQL-запрос для удаления сообщения из журнала потребителя. */
     private static final String SQL_DELETE_MESSAGES = """
-            DELETE FROM messages
+            DELETE FROM received_messages
             WHERE consumer_id = ? AND sequence = ?
             """;
 
@@ -38,7 +38,7 @@ public class MessagesRepository {
     private static final String SQL_FIND_MESSAGES_BY_CONSUMER_ID = """
             SELECT sequence, message_key, message_value, topic, partition_number, message_offset, timestamp,
                 headers_json
-            FROM messages
+            FROM received_messages
             WHERE consumer_id = ?
             ORDER BY sequence
             """;

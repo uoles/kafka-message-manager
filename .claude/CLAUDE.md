@@ -54,9 +54,13 @@ The Docker stack advertises Kafka to the host at `localhost:29092`, exposes Kafk
 
 ### Kafka sending
 
-`KafkaMessageServiceImpl` creates a producer factory and `KafkaTemplate` for each request, using the caller-provided `bootstrap.servers` value and string serializers. Producer settings include `acks=all`, retries, retry backoff, linger, request timeout, and delivery timeout. `HeaderUtils` parses and validates optional `name=value` headers before creating the `ProducerRecord`. Producer resources are destroyed in `finally`; check this service as well as `application.properties` when changing producer behavior.
+`KafkaMessageServiceImpl` creates a producer factory and `KafkaTemplate` for each request, using the caller-provided `bootstrap.servers` value and string serializers. Producer settings include `acks=all`, retries, retry backoff, linger, request timeout, and delivery timeout. `HeaderUtils` parses and validates optional `name=value` headers before creating the `ProducerRecord`. The send future is awaited with a 10-second timeout; interruption restores the thread flag, timeout becomes a runtime failure, and producer resources are destroyed in `finally`. The dynamic producer hardcodes its retry settings, so `spring.kafka.producer.retries` in `application.properties` does not control these request-scoped producers.
 
-The broker address is intentionally request-scoped rather than a single application-wide Kafka setting. Do not replace it with the local Docker address without changing the API and UI contract.
+The broker address is intentionally request-scoped rather than a single application-wide Kafka setting. Do not replace it with the local Docker address without changing the API and UI contract. The browser's `clearForm()` currently resets the address to `localhost:9092`, while the Docker host address and initial form value are `localhost:29092`; preserve or correct this inconsistency deliberately when changing the UI.
+
+### Persistence and response behavior
+
+Received consumer records are persisted by `ReceivedMessagesRepository` in the `received_messages` table, defined by `TABLE.RECEIVED_MESSAGES.sql`; this is separate from browser send history. Browser history is stored only in `localStorage` under `kafkaMessageHistory`. `MessageController` returns `MessageResponse` for sends, maps send failures to HTTP 500, and has a 400 handler for malformed header arguments when the exception reaches it. Bean-validation failures use Spring's default validation response because no dedicated validation handler is defined. Resend only repopulates the form and never sends automatically.
 
 ### Dynamic consumers
 
@@ -66,13 +70,25 @@ Each received record gets a local sequence number. `GET .../messages` treats `af
 
 ### SQLite persistence and migrations
 
-`ConsumersRepository` and `MessagesRepository`, coordinated by `ConsumersInfoServiceImpl`, persist consumer definitions and received records through `JdbcTemplate`. SQLite is configured by the single source of truth `spring.datasource.url` (currently `jdbc:sqlite:database/kafka-info.db`); `SQLiteDatabaseConfig` exposes the configured JDBC access.
+`ConsumersRepository` and `ReceivedMessagesRepository`, coordinated by `ConsumersInfoServiceImpl`, persist consumer definitions and received records through `JdbcTemplate`. SQLite is configured by the single source of truth `spring.datasource.url` (currently `jdbc:sqlite:database/kafka-info.db`); `SQLiteDatabaseConfig` exposes the configured JDBC access.
 
-Liquibase owns schema creation and tracking through `src/main/resources/liquibase/changelog-master.xml`, which includes formatted SQL migrations under `src/main/resources/liquibase/scripts/tables/`. Update the changelog when changing the `consumers` or `messages` schema; do not duplicate table creation in Java. The messages table is tied to consumers with cascading deletion.
+Liquibase owns schema creation and tracking through `src/main/resources/liquibase/changelog-master.xml`, which includes formatted SQL migrations under `src/main/resources/liquibase/scripts/tables/`. The received-message schema is `received_messages`, defined in `TABLE.RECEIVED_MESSAGES.sql`; update the changelog when changing the `consumers` or `received_messages` schema and do not duplicate table creation in Java. The received-message table is tied to consumers with cascading deletion.
+
+There are uncommitted persistence-renaming changes in the working tree: `MessagesRepository` was renamed to `ReceivedMessagesRepository`, and the `messages` table/migration was renamed to `received_messages`. Treat these changes as part of the current repository state when modifying persistence code.
+
+The application does not persist browser send history on the server. The UI stores it in `localStorage` under `kafkaMessageHistory`.
+
+### Error and response behavior
+
+`MessageController` returns `MessageResponse` for sends, catches send failures as HTTP 500, and has a 400 handler for malformed header input when that exception reaches the handler. Bean-validation failures from `@Valid` use Spring's default validation response because no dedicated validation handler is defined. Resend only repopulates the form and does not send automatically.
 
 ## Repository conventions
 
 - Keep DTOs in `ru.uoles.kafka.sender.model`, controllers in `controller`, Kafka integration in `kafka`, repositories in `kafka.repository`, services in `kafka.service`, consumer runtime code in `kafka.consumer`, and infrastructure configuration in `config`.
 - Match the existing Lombok style (`@RequiredArgsConstructor`, `@Slf4j`, and DTO conventions) and Java 23 configuration in nearby code.
 - Keep request validation and HTTP mapping in controllers, Kafka orchestration in services/managers, and SQL access in repositories.
+- Keep JavaScript comments and UI behavior aligned with the current browser contract; static scripts are classic scripts, not modules.
 - When changing Docker broker topology or advertised ports, update both `docker/kafka/README.md` and this file. The repository-specific rules in `.claude/rules/` contain additional project conventions; consult `.claude/rules/README.md` when a change touches architecture, API design, security, migrations, or the web UI.
+- `README.md` currently advertises the bare `/` web URL and says the service sends/receives messages; verify those claims against `WebController` and the actual API before relying on them.
+- `application.properties` has a stale `logging.level.com.example.kafkaproducer` entry; use the real `ru.uoles.kafka.sender` package when adjusting logging.
+- Do not assume `spring.kafka.producer.retries` affects dynamic producers; `KafkaMessageServiceImpl` supplies request-scoped properties directly.
