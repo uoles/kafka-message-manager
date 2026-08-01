@@ -21,17 +21,20 @@ public class MessagesRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
+    /** SQL-запрос для сохранения полученного сообщения. */
     private static final String SQL_SAVE_MESSAGE = """
             INSERT OR REPLACE INTO messages(consumer_id, sequence, message_key, message_value, topic,
                 partition_number, message_offset, timestamp, headers_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
+    /** SQL-запрос для удаления сообщения из журнала потребителя. */
     private static final String SQL_DELETE_MESSAGES = """
             DELETE FROM messages
             WHERE consumer_id = ? AND sequence = ?
             """;
 
+    /** SQL-запрос для загрузки сообщений конкретного потребителя. */
     private static final String SQL_FIND_MESSAGES_BY_CONSUMER_ID = """
             SELECT sequence, message_key, message_value, topic, partition_number, message_offset, timestamp,
                 headers_json

@@ -22,7 +22,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MessageController {
 
+    /** Сервис отправки сообщений в Kafka. */
     private final KafkaMessageService kafkaMessageService;
+
+    /** Менеджер жизненного цикла динамических Kafka-потребителей. */
     private final ConsumerManager consumerManager;
 
     /**

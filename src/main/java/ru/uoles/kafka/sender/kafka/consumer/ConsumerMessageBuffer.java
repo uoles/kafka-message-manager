@@ -12,9 +12,16 @@ import java.util.List;
 /** Потокобезопасный ограниченный буфер сообщений потребителя. */
 final class ConsumerMessageBuffer {
 
+    /** Максимальное число сообщений, удерживаемых в памяти. */
     private final int capacity;
+
+    /** Очередь сообщений в порядке их локальной последовательности. */
     private final ArrayDeque<ConsumerMessageResponse> messages = new ArrayDeque<>();
+
+    /** Следующий локальный номер, который будет присвоен сообщению. */
     private long nextSequence;
+
+    /** Общее число сообщений, вытесненных из ограниченного буфера. */
     private long droppedCount;
 
     /** Результат добавления сообщения, включая вытесленную запись. */

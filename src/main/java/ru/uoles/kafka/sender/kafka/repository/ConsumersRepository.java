@@ -18,6 +18,7 @@ public class ConsumersRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
+    /** SQL-запрос для добавления или обновления состояния потребителя. */
     private static final String SQL_SAVE_CONSUMER = """
             INSERT INTO consumers(id, bootstrap_address, topic, group_id, created_at, status, last_error,
                 dropped_count, next_sequence)
@@ -29,6 +30,7 @@ public class ConsumersRepository {
                     next_sequence=excluded.next_sequence
             """;
 
+    /** SQL-запрос для загрузки всех сохранённых потребителей. */
     private static final String SQL_FIND_ALL_CONSUMERS = """
             SELECT id, bootstrap_address, topic, group_id, created_at, status, last_error, dropped_count,
                 next_sequence
@@ -36,6 +38,7 @@ public class ConsumersRepository {
             ORDER BY created_at, id
             """;
 
+    /** SQL-запрос для удаления потребителя и каскадного удаления его сообщений. */
     private static final String SQL_DELETE_CONSUMER_BY_ID = """
             DELETE FROM consumers WHERE id = ?
             """;

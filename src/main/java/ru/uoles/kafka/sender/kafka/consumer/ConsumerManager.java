@@ -30,11 +30,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ConsumerManager {
 
+    /** Максимальное количество одновременно запущенных потребителей. */
     private static final int MAX_CONSUMERS = 5;
+
+    /** Максимальный размер одной страницы при чтении сообщений. */
     private static final int MAX_PAGE_SIZE = 200;
+
+    /** Максимальное количество сообщений в оперативном буфере потребителя. */
     private final int bufferCapacity = 500;
 
+    /** Сервис сохранения конфигураций потребителей и полученных сообщений. */
     private final ConsumersInfoService consumersInfoService;
+
+    /** Запущенные потребители, индексированные по идентификатору. */
     private final Map<UUID, ManagedConsumer> consumers = new ConcurrentHashMap<>();
 
     /** Восстанавливает сохранённых потребителей после создания Spring-контекста. */

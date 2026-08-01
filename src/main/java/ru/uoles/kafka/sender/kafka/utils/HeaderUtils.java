@@ -60,6 +60,13 @@ public final class HeaderUtils {
         return List.copyOf(parsedHeaders);
     }
 
+    /**
+     * Сериализует заголовки полученного сообщения в JSON для хранения в SQLite.
+     *
+     * @param headers заголовки Kafka-сообщения
+     * @return JSON-представление заголовков
+     * @throws IllegalStateException если сериализация не удалась
+     */
     public static String serializeHeaders(List<ConsumerMessageResponse.ConsumerHeaderResponse> headers) {
         try {
             return objectMapper.writeValueAsString(headers);
@@ -68,6 +75,13 @@ public final class HeaderUtils {
         }
     }
 
+    /**
+     * Восстанавливает заголовки сообщения из JSON, сохранённого в SQLite.
+     *
+     * @param headers JSON-представление заголовков
+     * @return список заголовков Kafka-сообщения
+     * @throws IllegalStateException если десериализация не удалась
+     */
     public static List<ConsumerMessageResponse.ConsumerHeaderResponse> deserializeHeaders(String headers) {
         try {
             return objectMapper.readValue(headers, new TypeReference<>() {});
