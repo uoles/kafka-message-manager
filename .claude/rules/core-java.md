@@ -1,8 +1,8 @@
-# Core Java 21 Standards
+# Core Java 23 Standards
 
 ## Language Features
-- Use Java 21 LTS features where appropriate
-- Prefer `var` for local variables when type is evident
+- Use Java 23 LTS features where appropriate
+- Not use `var` for local variables
 - Use records for immutable data carriers
 - Use switch expressions with pattern matching
 - Utilize text blocks for multi-line strings
@@ -32,3 +32,7 @@
 - Packages: lowercase
 - Test classes: *Test suffix
 - Abstract classes: Abstract* prefix
+
+## Maven and java install paths
+- Java 23 at "C:\Users\uoles\.jdks\openjdk-23.0.1"
+- Maven at "C:\Users\uoles\Downloads\Develop\apache-maven-3.9.10\bin\mvn"

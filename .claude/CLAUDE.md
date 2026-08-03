@@ -34,7 +34,7 @@ docker compose -f docker/kafka/docker-compose.yml down
 curl http://localhost:8080/api/kafka/health
 ```
 
-The Maven build has no separate lint or formatting plugin. `spring-boot-starter-test` is present, but there are currently no `src/test` sources, so `mvn test` may report that no tests were found. Use a JDK 23 toolchain; `pom.xml` sets both compiler source and target to `23`.
+The Maven build has no separate lint or formatting plugin. `spring-boot-starter-test` provides the JUnit 5, Mockito, and AssertJ stack; repository and service unit tests are under `src/test/java/ru/uoles/kafka/sender/kafka` and do not require Kafka or a database. Use a JDK 23 toolchain; `pom.xml` sets both compiler source and target to `23`.
 
 The Docker stack advertises Kafka to the host at `localhost:29092`, exposes Kafka UI at `http://localhost:8089/`, and uses `kafka:9092` for broker connections from other containers. The application listens on port `8080`. The web controller currently maps the UI under `/web/`, `/web/index`, and `/web/send-message`; the README's bare `/` URL is not mapped by `WebController`.
 

@@ -6,9 +6,8 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import ru.uoles.kafka.sender.config.KafkaClientFactory;
 import ru.uoles.kafka.sender.kafka.utils.HeaderUtils;
 
 import java.util.HashMap;
@@ -25,6 +24,8 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 @RequiredArgsConstructor
 public class KafkaMessageServiceImpl implements KafkaMessageService {
+
+    private final KafkaClientFactory kafkaClientFactory;
 
     /**
      * Отправляет сообщение в указанный топик с необязательными заголовками.
@@ -52,13 +53,12 @@ public class KafkaMessageServiceImpl implements KafkaMessageService {
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 30000);
         props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120000);
 
-        DefaultKafkaProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(props);
-        KafkaTemplate<String, String> kafkaTemplate = new KafkaTemplate<>(producerFactory);
+        KafkaClientFactory.KafkaClient client = kafkaClientFactory.create(props);
 
         try {
             ProducerRecord<String, String> record = new ProducerRecord<>(topic, messageText);
             parsedHeaders.forEach(header -> record.headers().add(header));
-            var result = kafkaTemplate.send(record).get(10, TimeUnit.SECONDS);
+            var result = client.kafkaTemplate().send(record).get(10, TimeUnit.SECONDS);
             log.info("Message sent successfully to topic: {}, partition: {}, offset: {}",
                     topic, result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
         } catch (InterruptedException exception) {
@@ -67,8 +67,8 @@ public class KafkaMessageServiceImpl implements KafkaMessageService {
         } catch (TimeoutException exception) {
             throw new RuntimeException("Timed out while sending message to Kafka", exception);
         } finally {
-            kafkaTemplate.destroy();
-            producerFactory.destroy();
+            client.kafkaTemplate().destroy();
+            client.producerFactory().destroy();
         }
     }
 }

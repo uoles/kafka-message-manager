@@ -6,6 +6,7 @@ When you complete a task or user asks to save task results:
 1. Create a memory file in `.claude/memory/{current_date}/`
 2. Use format: `{task_number}-{task_name}.md`
 3. Include: task description, solution, decisions made, and next steps
+4. Create or update if exists file [MEMORY.md](../MEMORY.md) with index of completed tasks
 
 ## File Structure Template
 
@@ -26,6 +27,13 @@ When you complete a task or user asks to save task results:
 
 ## Next Steps
 - [Any follow-up tasks]
+```
+
+## Index Structure Template (MEMORY.md)
+
+Every row construct by template:
+```markdown
+{current_date} - [{task_name}]({link to file}) - [short task description]
 ```
 
 How to Determine Task Number

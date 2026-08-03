@@ -1,0 +1,3 @@
+- [Repository unit tests](memory/2026-08-03/1-repository-unit-tests.md) — Mockito/JUnit repository coverage and Maven verification result.
+- [Memory storage preference](memory/2026-08-03/2-project-local-memory-preference.md) — Store task memories in this project's `.claude/memory/` only.
+- [Service unit tests](memory/2026-08-03/3-service-unit-tests.md) — Added Mockito/JUnit coverage for service implementations; Maven pending due unavailable executable.
