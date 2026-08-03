@@ -89,25 +89,45 @@ public class MessageController {
     }
 
     /**
-     * Проверяет доступность Kafka-сервиса.
+     * Создаёт и запускает динамического Kafka-потребителя.
      *
-     * @return успешный HTTP-ответ со статусом сервиса
+     * @param request валидированный запрос с адресом брокера и названием топика
+     * @return HTTP-ответ с данными созданного потребителя
      */
     @PostMapping("/consumers")
     public ResponseEntity<ConsumerResponse> createConsumer(@Valid @RequestBody CreateConsumerRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(consumerManager.create(request.getBootstrapAddress(), request.getTopic()));
     }
 
+    /**
+     * Возвращает список всех динамических Kafka-потребителей.
+     *
+     * @return HTTP-ответ со списком потребителей
+     */
     @GetMapping("/consumers")
     public ResponseEntity<List<ConsumerResponse>> listConsumers() {
         return ResponseEntity.ok(consumerManager.list());
     }
 
+    /**
+     * Возвращает сведения о динамическом Kafka-потребителе.
+     *
+     * @param id уникальный идентификатор потребителя
+     * @return HTTP-ответ с данными потребителя
+     */
     @GetMapping("/consumers/{id}")
     public ResponseEntity<ConsumerResponse> getConsumer(@PathVariable UUID id) {
         return ResponseEntity.ok(consumerManager.get(id));
     }
 
+    /**
+     * Возвращает порцию сообщений из буфера потребителя после указанного курсора.
+     *
+     * @param id уникальный идентификатор потребителя
+     * @param after эксклюзивный курсор последнего обработанного сообщения
+     * @param limit максимальное количество возвращаемых сообщений
+     * @return HTTP-ответ с сообщениями и метаданными курсора
+     */
     @GetMapping("/consumers/{id}/messages")
     public ResponseEntity<ConsumerMessagesResponse> getConsumerMessages(@PathVariable UUID id,
                                                                           @RequestParam(defaultValue = "0") long after,
@@ -115,27 +135,45 @@ public class MessageController {
         return ResponseEntity.ok(consumerManager.messages(id, after, limit));
     }
 
+    /**
+     * Останавливает и удаляет динамического Kafka-потребителя.
+     *
+     * @param id уникальный идентификатор удаляемого потребителя
+     * @return пустой HTTP-ответ со статусом успешного удаления
+     */
     @DeleteMapping("/consumers/{id}")
     public ResponseEntity<Void> deleteConsumer(@PathVariable UUID id) {
         consumerManager.delete(id);
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Преобразует ошибку отсутствующего потребителя в HTTP-ответ.
+     *
+     * @param exception исключение с описанием отсутствующего потребителя
+     * @return HTTP-ответ со статусом 404 и описанием ошибки
+     */
     @ExceptionHandler(ConsumerManager.ConsumerNotFoundException.class)
     public ResponseEntity<MessageResponse> handleConsumerNotFound(ConsumerManager.ConsumerNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
     }
 
+    /**
+     * Преобразует превышение лимита потребителей в HTTP-ответ.
+     *
+     * @param exception исключение о достижении максимального количества потребителей
+     * @return HTTP-ответ со статусом 409 и описанием ошибки
+     */
     @ExceptionHandler(ConsumerManager.ConsumerLimitException.class)
     public ResponseEntity<MessageResponse> handleConsumerLimit(ConsumerManager.ConsumerLimitException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
     }
 
-//    @ExceptionHandler(IllegalArgumentException.class)
-//    public ResponseEntity<MessageResponse> handleInvalidConsumerParameter(IllegalArgumentException exception) {
-//        return ResponseEntity.badRequest().body(new MessageResponse("error", exception.getMessage(), null, null, System.currentTimeMillis()));
-//    }
-
+    /**
+     * Проверяет доступность сервиса отправки сообщений в Kafka.
+     *
+     * @return успешный HTTP-ответ со статусом сервиса
+     */
     @GetMapping("/health")
     public ResponseEntity<MessageResponse> healthCheck() {
         MessageResponse response = new MessageResponse(
@@ -147,4 +185,5 @@ public class MessageController {
         );
         return ResponseEntity.ok(response);
     }
+
 }

@@ -23,6 +23,7 @@
 - No wildcard imports
 - Use final for effective immutability where possible
 - For WEB use thymeleaf with bootstrap framework v5.0
+- Add Javadoc comments on Russian for classes, procedures and constants.
 
 ## Naming Conventions
 - Classes: PascalCase
