@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working in this
 
 ## Project overview
 
-`kafka-message-manager` is a Spring Boot 3.5 service for sending messages to Kafka and managing dynamic Kafka consumers through a JSON API and a Thymeleaf/Bootstrap browser UI. The project uses Maven and requires JDK 23. Application code is rooted at `ru.uoles.kafka.sender`; keep new Spring components below that package unless component scanning is deliberately changed.
+`kafka-message-manager` is a Spring Boot 3.5 service for sending messages to Kafka and managing dynamic Kafka consumers through a JSON API and a Thymeleaf/Bootstrap browser UI. The project uses Maven and requires JDK 23. Application code is rooted at `ru.uoles.kafka.sender`; keep new Spring components below that package unless component scanning is deliberately changed. Authentication uses local SQLite-backed users and roles with BCrypt passwords and stateless JWT bearer tokens.
 
 ## Development commands
 
@@ -49,6 +49,9 @@ The Docker stack advertises Kafka to the host at `localhost:29092`, exposes Kafk
   - `GET /api/kafka/consumers/{id}/messages?after=&limit=` for cursor-based message polling.
   - `DELETE /api/kafka/consumers/{id}` to stop and remove a consumer and its persisted messages.
   - `GET /api/kafka/health` for a simple health response.
+- `AuthController` owns public `POST /api/v1/auth/register` and `POST /api/v1/auth/login` endpoints. Registration assigns only the `USER` role; login returns a short-lived JWT bearer token.
+- `SecurityConfig` permits auth endpoints, the Kafka health endpoint, and static resources, while protecting other `/api/**` and `/web/**` routes. JWT properties and security allowlists are externalized in `application.properties`/environment variables.
+- Security tests using `@WebMvcTest` disable filters only for legacy controller behavior tests; dedicated security tests must exercise the filter chain and role restrictions.
 - `WebController` returns the `index` Thymeleaf view for `/web/send-message`, `/web/`, and `/web/index`. `ThymeleafConfig` explicitly configures the classpath template resolver, UTF-8 engine, view resolver, and static resource handling.
 - `src/main/resources/templates/index.html` is a self-contained UI with Bootstrap tabs for sending messages, browser-local message history, and dynamic consumers. Classic scripts are loaded in dependency order: `app-state.js`, `history.js`, `consumers.js`, `form.js`, then `init.js`. Bootstrap must remain loaded before them because resend and tab behavior use its API.
 
@@ -90,5 +93,11 @@ The application does not persist browser send history on the server. The UI stor
 - Keep JavaScript comments and UI behavior aligned with the current browser contract; static scripts are classic scripts, not modules.
 - When changing Docker broker topology or advertised ports, update both `docker/kafka/README.md` and this file. The repository-specific rules in `.claude/rules/` contain additional project conventions; consult `.claude/rules/README.md` when a change touches architecture, API design, security, migrations, or the web UI.
 - `README.md` currently advertises the bare `/` web URL and says the service sends/receives messages; verify those claims against `WebController` and the actual API before relying on them.
-- `application.properties` has a stale `logging.level.com.example.kafkaproducer` entry; use the real `ru.uoles.kafka.sender` package when adjusting logging.
+- `application.properties` has a stale `logging.level.com.example.kafkaproducer` entry; use the real `ru.uoles.kafka.sender` package when adjusting logging. Security configuration includes `security.jwt.issuer`, `security.jwt.audience`, `security.jwt.access-token-ttl`, external key properties, registration enablement, CORS origins, and broker allowlist properties; never commit production key material.
+
+### Authentication and authorization
+
+Users, roles, and user-role links are created by the Liquibase migration `TABLE.SECURITY.sql` in SQLite tables `users`, `roles`, and `user_roles`. Roles are stored as `USER`, `MODERATOR`, and `ADMIN` and mapped to Spring authorities with the `ROLE_` prefix. BCrypt is used for password hashing. API consumers must send a valid JWT in the `Authorization: Bearer` header; CSRF is disabled for this stateless bearer-token model. The initial security implementation generates an RSA key pair at startup when no external key material is configured, which is suitable only for local development because restarting invalidates tokens; production deployments must provide stable external signing keys and HTTPS.
+
+Public authentication routes are `/api/v1/auth/register` and `/api/v1/auth/login`. `/api/kafka/health` remains public for health probes. Other `/api/**` and `/web/**` routes require authentication; role-specific restrictions should be added with method security as consumer ownership and the browser login flow are completed. Do not log passwords, password hashes, JWTs, signing keys, or authorization headers.
 - Do not assume `spring.kafka.producer.retries` affects dynamic producers; `KafkaMessageServiceImpl` supplies request-scoped properties directly.

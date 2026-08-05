@@ -1,0 +1,20 @@
+-- liquibase formatted sql
+
+-- changeset kulikov-mv:20260804-002.security-roles
+CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL UNIQUE
+);
+-- rollback DROP TABLE IF EXISTS roles;
+
+-- changeset kulikov-mv:20260804-003.security-default-roles
+INSERT INTO roles(id, name)
+SELECT '00000000-0000-0000-0000-000000000001', 'USER'
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'USER');
+INSERT INTO roles(id, name)
+SELECT '00000000-0000-0000-0000-000000000002', 'MODERATOR'
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'MODERATOR');
+INSERT INTO roles(id, name)
+SELECT '00000000-0000-0000-0000-000000000003', 'ADMIN'
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'ADMIN');
+-- rollback DELETE FROM roles WHERE name IN ('USER', 'MODERATOR', 'ADMIN');

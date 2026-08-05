@@ -63,11 +63,85 @@ mvn -Dtest=ClassNameTest test
 mvn -Dtest=ClassNameTest#methodName test
 ```
 
-В проекте подключен `spring-boot-starter-test`, однако исходники тестов в `src/test` пока отсутствуют. Отдельный lint- или formatting-плагин в Maven не настроен.
+В проекте подключен `spring-boot-starter-test`, а контроллеры, сервисы и JDBC-репозитории покрыты JUnit 5/Mockito/MockMvc-тестами в `src/test`. Отдельный lint- или formatting-плагин в Maven не настроен.
+
+## Аутентификация и авторизация
+
+Приложение использует Spring Security с локальными пользователями, BCrypt-хэшированием паролей и stateless JWT bearer-токенами.
+
+Публичные endpoints:
+
+- `POST /api/v1/auth/register` — регистрация пользователя; публичная регистрация назначает только роль `USER`;
+- `POST /api/v1/auth/login` — вход и получение JWT;
+- `GET /api/kafka/health` — проверка состояния сервиса.
+
+Пример регистрации:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \\
+  -H "Content-Type: application/json" \\
+  -d '{"username":"user@example.com","password":"strong-password","displayName":"User"}'
+```
+
+Пример входа:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"username":"user@example.com","password":"strong-password"}'
+```
+
+Ответ содержит `accessToken`, тип `Bearer`, срок действия токена и безопасные сведения о пользователе. Пароль, его хэш и ключ подписи в API-ответы не включаются.
+
+Все остальные `/api/**` и `/web/**` требуют заголовок:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+Роли:
+
+- `USER` — отправка сообщений;
+- `MODERATOR` — управление динамическими Kafka-потребителями;
+- `ADMIN` — права модератора и административные операции.
+
+Security-миграции управляются Liquibase и разделены по таблицам:
+
+- `TABLE.USERS.sql` — пользователи;
+- `TABLE.ROLES.sql` — роли и начальные роли `USER`, `MODERATOR`, `ADMIN`;
+- `TABLE.USER_ROLES.sql` — связи пользователей и ролей.
+
+JWT и security-настройки задаются через `application.properties` или переменные окружения:
+
+- `SECURITY_JWT_ISSUER`;
+- `SECURITY_JWT_AUDIENCE`;
+- `SECURITY_JWT_PRIVATE_KEY` и `SECURITY_JWT_PUBLIC_KEY`;
+- `SECURITY_JWT_ACCESS_TOKEN_TTL`;
+- `SECURITY_CORS_ALLOWED_ORIGINS`;
+- `SECURITY_BROKER_ALLOWED_ADDRESSES`.
+
+В локальной конфигурации при отсутствии ключей RSA-пара генерируется при старте приложения. Для production необходимо использовать стабильные внешние ключи, HTTPS и не хранить секреты в исходном коде.
 
 ## REST API
 
+Базовый путь API: `/api/kafka`. За исключением `/api/kafka/health`, endpoints требуют JWT из раздела аутентификации.
+
+Базовый путь авторизации: `/api/v1/auth`.
+
+Интерфейс `curl` для защищённых endpoints:
+
+```bash
+curl http://localhost:8080/api/kafka/consumers \\
+  -H "Authorization: Bearer <accessToken>"
+```
+
+### Проверка состояния
+
 Базовый путь API: `/api/kafka`.
+
+```http
+GET /api/kafka/health
+```
 
 ### Проверка состояния
 
@@ -178,7 +252,19 @@ jdbc:sqlite:database/kafka-info.db
 - основной changelog: `src/main/resources/liquibase/changelog-master.xml`;
 - таблица потребителей: `consumers`;
 - таблица полученных сообщений: `received_messages`;
-- миграция журнала сообщений: `src/main/resources/liquibase/scripts/tables/TABLE.RECEIVED_MESSAGES.sql`.
+- миграция журнала сообщений: `src/main/resources/liquibase/scripts/tables/TABLE.RECEIVED_MESSAGES.sql`;
+- таблица пользователей: `users`;
+- таблица ролей: `roles`;
+- связи пользователей и ролей: `user_roles`;
+- миграция пользователей: `src/main/resources/liquibase/scripts/tables/TABLE.USERS.sql`;
+- миграция ролей: `src/main/resources/liquibase/scripts/tables/TABLE.ROLES.sql`;
+- миграция связей ролей: `src/main/resources/liquibase/scripts/tables/TABLE.USER_ROLES.sql`.
+
+Пароли сохраняются только в виде BCrypt-хэшей. Роли `USER`, `MODERATOR` и `ADMIN` добавляются Liquibase-миграцией идемпотентно. Не добавляйте пароли или RSA-ключи в SQL-миграции и исходный код.
+
+Для production необходимо передать стабильный внешний RSA key pair. Если ключи не заданы, приложение генерирует временную пару при запуске, поэтому уже выданные токены станут недействительными после перезапуска.
+
+Адрес Kafka в запросах является request-scoped. До использования в production настройте `SECURITY_BROKER_ALLOWED_ADDRESSES` и ограничьте список разрешённых адресов; не разрешайте произвольные внутренние hosts без отдельной политики SSRF.
 
 Не создавайте таблицы вручную в Java-коде — изменения схемы должны оформляться Liquibase-миграциями.
 
@@ -206,10 +292,11 @@ Bootstrap 5.0.2 подключается из CDN до этих скриптов
 
 - `controller` — REST- и web-контроллеры;
 - `model` — DTO и ответы API;
+- `security` — user details, JWT, auth service и SQLite security repository;
 - `kafka/service` — отправка сообщений и сервисы работы с данными потребителей;
 - `kafka/consumer` — динамические Kafka-контейнеры и буферы сообщений;
 - `kafka/repository` — JDBC-репозитории SQLite;
-- `config` — конфигурация Thymeleaf и JDBC;
+- `config` — конфигурация Thymeleaf, JDBC и Spring Security;
 - `src/main/resources/liquibase` — миграции базы данных;
 - `src/main/resources/templates` — Thymeleaf-шаблон и browser UI.
 

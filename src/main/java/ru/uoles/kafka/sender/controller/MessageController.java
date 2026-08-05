@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import ru.uoles.kafka.sender.kafka.consumer.ConsumerManager;
 import ru.uoles.kafka.sender.kafka.service.KafkaMessageService;
@@ -34,6 +35,7 @@ public class MessageController {
      * @param request валидированный запрос с параметрами сообщения
      * @return HTTP-ответ с результатом отправки
      */
+    @PreAuthorize("hasAnyRole('USER', 'MODERATOR', 'ADMIN')")
     @PostMapping("/send")
     public ResponseEntity<MessageResponse> sendMessage(@Valid @RequestBody MessageRequest request) {
         log.info("Received request to send message to topic: {}, kafka: {}",
@@ -94,6 +96,7 @@ public class MessageController {
      * @param request валидированный запрос с адресом брокера и названием топика
      * @return HTTP-ответ с данными созданного потребителя
      */
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     @PostMapping("/consumers")
     public ResponseEntity<ConsumerResponse> createConsumer(@Valid @RequestBody CreateConsumerRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(consumerManager.create(request.getBootstrapAddress(), request.getTopic()));
@@ -104,6 +107,7 @@ public class MessageController {
      *
      * @return HTTP-ответ со списком потребителей
      */
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     @GetMapping("/consumers")
     public ResponseEntity<List<ConsumerResponse>> listConsumers() {
         return ResponseEntity.ok(consumerManager.list());
@@ -115,6 +119,7 @@ public class MessageController {
      * @param id уникальный идентификатор потребителя
      * @return HTTP-ответ с данными потребителя
      */
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     @GetMapping("/consumers/{id}")
     public ResponseEntity<ConsumerResponse> getConsumer(@PathVariable UUID id) {
         return ResponseEntity.ok(consumerManager.get(id));
@@ -128,6 +133,7 @@ public class MessageController {
      * @param limit максимальное количество возвращаемых сообщений
      * @return HTTP-ответ с сообщениями и метаданными курсора
      */
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     @GetMapping("/consumers/{id}/messages")
     public ResponseEntity<ConsumerMessagesResponse> getConsumerMessages(@PathVariable UUID id,
                                                                           @RequestParam(defaultValue = "0") long after,
@@ -141,6 +147,7 @@ public class MessageController {
      * @param id уникальный идентификатор удаляемого потребителя
      * @return пустой HTTP-ответ со статусом успешного удаления
      */
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     @DeleteMapping("/consumers/{id}")
     public ResponseEntity<Void> deleteConsumer(@PathVariable UUID id) {
         consumerManager.delete(id);

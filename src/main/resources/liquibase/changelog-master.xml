@@ -7,5 +7,8 @@
 
     <include file="scripts/tables/TABLE.CONSUMERS.sql" relativeToChangelogFile="true"/>
     <include file="scripts/tables/TABLE.RECEIVED_MESSAGES.sql" relativeToChangelogFile="true"/>
+    <include file="scripts/tables/TABLE.USERS.sql" relativeToChangelogFile="true"/>
+    <include file="scripts/tables/TABLE.ROLES.sql" relativeToChangelogFile="true"/>
+    <include file="scripts/tables/TABLE.USER_ROLES.sql" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

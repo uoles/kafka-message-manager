@@ -29,7 +29,7 @@
 14. [Development Workflow](./development-workflow.md)
 
 ## How to Use
-1. Read `core-java.md` first
+1. Read `core-java.md, task-memory.md, claude-file-update.md` first
 2. Follow `project-structure.md` for organization
 3. Apply `spring-boot.md` for implementation
 4. Use `code-review.md` for reviews

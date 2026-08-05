@@ -1,5 +1,6 @@
 package ru.uoles.kafka.sender.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
@@ -30,6 +32,7 @@ import ru.uoles.kafka.sender.model.ConsumerMessagesResponse;
 import ru.uoles.kafka.sender.model.ConsumerResponse;
 
 @WebMvcTest(MessageController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class MessageControllerTest {
 
     private static final String SEND_BODY = """
@@ -68,7 +71,7 @@ class MessageControllerTest {
         verify(kafkaMessageService).sendMessage("events", "localhost:9092", "hello", "trace-id=abc");
         verifyNoInteractions(consumerManager);
         // The response timestamp is generated during request handling.
-        org.assertj.core.api.Assertions.assertThat(before).isLessThanOrEqualTo(after);
+        assertThat(before).isLessThanOrEqualTo(after);
     }
 
     @Test
@@ -133,11 +136,11 @@ class MessageControllerTest {
 
         var response = controller.handleInvalidHeaders(new IllegalArgumentException("Invalid header"));
 
-        org.assertj.core.api.Assertions.assertThat(response.getStatusCode().value()).isEqualTo(400);
-        org.assertj.core.api.Assertions.assertThat(response.getBody())
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody())
                 .extracting("status", "message", "topic", "kafkaAddress")
                 .containsExactly("error", "Invalid header", null, null);
-        org.assertj.core.api.Assertions.assertThat(response.getBody().getTimestamp()).isNotNull();
+        assertThat(response.getBody().getTimestamp()).isNotNull();
     }
 
     @Test
