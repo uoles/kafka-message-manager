@@ -2,15 +2,29 @@
 const initApp = window.KafkaMessageManager;
 const initState = initApp.state;
 
+if (!initState.form || !initState.consumerForm) {
+    throw new Error('Kafka page elements are not initialized');
+}
+
+if (!initApp.auth.getToken()) {
+    initApp.auth.redirectToLogin();
+} else {
+    initApp.updateAuthUi();
+}
+
 // Подключение обработчиков формы отправки и формы консьюмера.
+initApp.updateAuthUi();
+document.getElementById('logoutBtn').addEventListener('click', initApp.auth.logout);
 initState.form.addEventListener('submit', initApp.form.sendMessage);
 initState.consumerForm.addEventListener('submit', initApp.consumers.createConsumer);
 initState.consumerTabs.addEventListener('click', event => {
     const button = event.target.closest('[data-delete-consumer]');
     if (button) initApp.consumers.deleteConsumer(button.dataset.deleteConsumer);
 });
-document.getElementById('consumers-tab').addEventListener('shown.bs.tab', initApp.consumers.loadConsumers);
-initApp.consumers.loadConsumers().catch(() => {});
+if (initApp.canAccessConsumers()) {
+    document.getElementById('consumers-tab').addEventListener('shown.bs.tab', initApp.consumers.loadConsumers);
+    initApp.consumers.loadConsumers().catch(() => {});
+}
 
 // Останавливает запланированные опросы перед закрытием страницы.
 window.addEventListener('beforeunload', () => initState.consumerTimers.forEach(timer => clearTimeout(timer)));

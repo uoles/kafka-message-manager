@@ -1,6 +1,7 @@
 // Работа с историей отправленных сообщений и её отображением.
 const app = window.KafkaMessageManager;
 const state = app.state;
+if (app.auth) app.storageKey = app.auth.historyKey();
 
 // Загружает историю из локального хранилища браузера.
 function loadHistory() {

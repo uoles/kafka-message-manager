@@ -2,19 +2,21 @@
 const consumerApp = window.KafkaMessageManager;
 const consumerState = consumerApp.state;
 
+const apiFetch = consumerApp.apiFetch;
+
 // Создаёт консьюмер через REST API.
 async function createConsumer(event) {
     event.preventDefault();
     const button = document.getElementById('createConsumerBtn');
     button.disabled = true;
     try {
-        const response = await fetch('/api/kafka/consumers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bootstrapAddress: document.getElementById('consumerBootstrapAddress').value.trim(), topic: document.getElementById('consumerTopic').value.trim() }) });
+        const response = await apiFetch('/api/kafka/consumers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bootstrapAddress: document.getElementById('consumerBootstrapAddress').value.trim(), topic: document.getElementById('consumerTopic').value.trim() }) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Failed to create consumer');
         consumerState.consumers.set(data.id, data);
         consumerState.consumerCursors.set(data.id, 0);
         renderConsumers();
-        pollConsumer(data.id);
+        if (consumerApp.canAccessConsumers()) pollConsumer(data.id);
         consumerState.consumerForm.reset();
     } catch (error) { alert(error.message); } finally { button.disabled = false; }
 }
@@ -22,8 +24,10 @@ async function createConsumer(event) {
 // Перерисовывает список вкладок созданных консьюмеров.
 function renderConsumers() {
     if (!consumerState.consumers.size) { consumerState.consumerTabs.innerHTML = '<div class="text-muted">No consumers created.</div>'; return; }
+    const canManage = consumerApp.canManageConsumers();
+    const canAccess = consumerApp.canAccessConsumers();
     const nav = [...consumerState.consumers.values()].map((consumer, index) => `<li class="nav-item"><button class="nav-link ${index === 0 ? 'active' : ''}" data-bs-toggle="tab" data-bs-target="#consumer-pane-${consumer.id}" type="button">${consumerApp.escapeHtml(consumer.topic)}</button></li>`).join('');
-    const panes = [...consumerState.consumers.values()].map((consumer, index) => `<section class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="consumer-pane-${consumer.id}"><div class="d-flex justify-content-between align-items-center mb-3"><div><span class="badge bg-${consumer.status === 'RUNNING' ? 'success' : consumer.status === 'ERROR' ? 'danger' : 'secondary'}">${consumerApp.escapeHtml(consumer.status)}</span> <span class="text-muted">${consumerApp.escapeHtml(consumer.bootstrapAddress)} · group ${consumerApp.escapeHtml(consumer.groupId)}</span>${consumer.lastError ? `<div class="text-danger small">${consumerApp.escapeHtml(consumer.lastError)}</div>` : ''}</div><button class="btn btn-outline-danger btn-sm" data-delete-consumer="${consumer.id}">Delete</button></div><div id="consumer-messages-${consumer.id}" class="table-responsive"><div class="text-muted py-3">Waiting for messages...</div></div></section>`).join('');
+    const panes = [...consumerState.consumers.values()].map((consumer, index) => `<section class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="consumer-pane-${consumer.id}"><div class="d-flex justify-content-between align-items-center mb-3"><div><span class="badge bg-${consumer.status === 'RUNNING' ? 'success' : consumer.status === 'ERROR' ? 'danger' : 'secondary'}">${consumerApp.escapeHtml(consumer.status)}</span> <span class="text-muted">${consumerApp.escapeHtml(consumer.bootstrapAddress)} · group ${consumerApp.escapeHtml(consumer.groupId)}</span>${consumer.lastError ? `<div class="text-danger small">${consumerApp.escapeHtml(consumer.lastError)}</div>` : ''}${canManage ? '' : '<div class="text-muted small mt-2">Consumer created. Monitoring and deletion require moderator or admin access.</div>'}</div>${canManage ? `<button class="btn btn-outline-danger btn-sm" data-delete-consumer="${consumer.id}">Delete</button>` : ''}</div><div id="consumer-messages-${consumer.id}" class="table-responsive"><div class="text-muted py-3">${canAccess ? 'Waiting for messages...' : 'Message monitoring is unavailable for your role.'}</div></div></section>`).join('');
     consumerState.consumerTabs.innerHTML = `<ul class="nav nav-pills mb-3">${nav}</ul><div class="tab-content">${panes}</div>`;
     consumerState.consumers.forEach((consumer, id) => renderConsumerMessages(id));
 }
@@ -43,7 +47,7 @@ async function pollConsumer(id) {
     if (consumerState.consumerInFlight.has(id)) return;
     consumerState.consumerInFlight.add(id);
     try {
-        const response = await fetch(`/api/kafka/consumers/${id}/messages?after=${consumerState.consumerCursors.get(id) || 0}&limit=100`);
+        const response = await apiFetch(`/api/kafka/consumers/${id}/messages?after=${consumerState.consumerCursors.get(id) || 0}&limit=100`);
         if (response.status === 404) { removeConsumerLocally(id); return; }
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Consumer unavailable');
@@ -75,7 +79,7 @@ function removeConsumerLocally(id) {
 
 // Синхронизирует список консьюмеров с сервером.
 async function loadConsumers() {
-    const response = await fetch('/api/kafka/consumers');
+    const response = await apiFetch('/api/kafka/consumers');
     if (!response.ok) return;
     const serverConsumers = await response.json();
     const serverIds = new Set(serverConsumers.map(consumer => consumer.id));
@@ -92,7 +96,7 @@ async function loadConsumers() {
 function deleteConsumer(id) {
     clearTimeout(consumerState.consumerTimers.get(id));
     consumerState.consumerTimers.delete(id);
-    fetch(`/api/kafka/consumers/${id}`, { method: 'DELETE' }).then(response => {
+    apiFetch(`/api/kafka/consumers/${id}`, { method: 'DELETE' }).then(response => {
         if (response.ok || response.status === 404) removeConsumerLocally(id);
         else throw new Error('Failed to delete consumer');
     }).catch(error => consumerState.consumerErrors.set(id, error.message));

@@ -18,6 +18,16 @@ class WebControllerTest {
     private MockMvc mockMvc;
 
     @Test
+    void loginAndRegister_returnPublicViews() throws Exception {
+        mockMvc.perform(get("/web/login"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("login"));
+        mockMvc.perform(get("/web/register"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("register"));
+    }
+
+    @Test
     void showForm_returnsIndexView() throws Exception {
         mockMvc.perform(get("/web/send-message"))
                 .andExpect(status().isOk())

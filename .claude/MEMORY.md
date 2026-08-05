@@ -2,3 +2,6 @@
 - [Memory storage preference](memory/2026-08-03/2-project-local-memory-preference.md) — Store task memories in this project's `.claude/memory/` only.
 - [Service unit tests](memory/2026-08-03/3-service-unit-tests.md) — Added Mockito/JUnit coverage for service implementations; Maven pending due unavailable executable.
 - [Spring Boot security](memory/2026-08-04/1-spring-boot-security.md) — Initial JWT/BCrypt/SQLite/Liquibase security foundation and verification result; follow-up work remains.
+- [Web authentication UI and form submission fix](memory/2026-08-05/1-web-auth-ui-and-form-fix.md) — Added JWT browser auth pages and fixed the message form's missing authenticated REST request.
+- [Allow USER to create consumers](memory/2026-08-05/2-allow-user-create-consumers.md) — USER may create consumers; management remains moderator/admin-only.
+- [Owner-scoped consumer persistence and tests](memory/2026-08-05/3-owner-scoped-consumer-tests.md) — Added consumer ownership propagation, user-scoped access, and repository test coverage.

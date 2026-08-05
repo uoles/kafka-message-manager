@@ -41,9 +41,11 @@ mvn spring-boot:run
 
 Веб-интерфейс доступен по адресам:
 
+- <http://localhost:8080/web/login> — вход;
+- <http://localhost:8080/web/register> — регистрация;
 - <http://localhost:8080/web/>;
 - <http://localhost:8080/web/index>;
-- <http://localhost:8080/web/send-message>.
+- <http://localhost:8080/web/send-message> — защищённый интерфейс.
 
 Корневой адрес <http://localhost:8080/> отдельным контроллером не обрабатывается.
 
@@ -101,8 +103,8 @@ Authorization: Bearer <accessToken>
 
 Роли:
 
-- `USER` — отправка сообщений;
-- `MODERATOR` — управление динамическими Kafka-потребителями;
+- `USER` — отправка сообщений, создание и управление только собственными динамическими Kafka-потребителями;
+- `MODERATOR` — глобальное управление динамическими Kafka-потребителями;
 - `ADMIN` — права модератора и административные операции.
 
 Security-миграции управляются Liquibase и разделены по таблицам:
@@ -193,12 +195,17 @@ Producer создаётся для каждого запроса и исполь
 
 ### Управление Kafka-потребителями
 
-Создать потребителя:
+Создать потребителя (доступно `USER`, `MODERATOR` и `ADMIN`):
 
 ```http
 POST /api/kafka/consumers
+Authorization: Bearer <accessToken>
 Content-Type: application/json
 ```
+
+Пользователь с ролью `USER` получает доступ только к своим потребителям: может загрузить их список, читать полученные сообщения и удалить собственный consumer. `MODERATOR` и `ADMIN` имеют глобальный доступ к consumer-операциям.
+
+Примечание: consumer использует `auto.offset.reset=latest`, поэтому сообщения, опубликованные до назначения consumer group, не будут прочитаны. Для проверки публикуйте новые сообщения после того, как consumer перейдёт в состояние `RUNNING`.
 
 ```json
 {

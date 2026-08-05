@@ -18,12 +18,14 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        return userRepository.findByUsername(username)
+        UserDetails result = userRepository.findByUsername(username)
                 .map(account -> User.withUsername(account.username())
                         .password(account.passwordHash())
                         .disabled(!account.enabled())
                         .authorities(account.roles().stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role)).toList())
                         .build())
                 .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
+
+        return result;
     }
 }

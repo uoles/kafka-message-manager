@@ -40,16 +40,17 @@ class ConsumersRepositoryTest {
     @DisplayName("saves consumer definition and state using the upsert parameters")
     void savesConsumer() {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         Instant createdAt = Instant.ofEpochMilli(1_234_567L);
         ConsumersRepository.ConsumerRecord consumer = new ConsumersRepository.ConsumerRecord(
-                id, "localhost:9092", "orders", "group-1", createdAt, ConsumerStatus.RUNNING,
+                id, userId, "localhost:9092", "orders", "group-1", createdAt, ConsumerStatus.RUNNING,
                 "last failure", 3L, 8L);
 
         repository.saveConsumer(consumer);
 
         verify(jdbcTemplate).update(
                 eqSql("INSERT INTO consumers", "ON CONFLICT(id) DO UPDATE"),
-                eq(id.toString()), eq("localhost:9092"), eq("orders"), eq("group-1"),
+                eq(id.toString()), eq(userId.toString()), eq("localhost:9092"), eq("orders"), eq("group-1"),
                 eq(1_234_567L), eq("RUNNING"), eq("last failure"), eq(3L), eq(8L));
         verifyNoMoreInteractions(jdbcTemplate);
     }
@@ -58,9 +59,11 @@ class ConsumersRepositoryTest {
     @DisplayName("loads all consumers and maps database columns to a consumer record")
     void findsAndMapsConsumers() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         Instant createdAt = Instant.ofEpochMilli(987_654L);
         ResultSet resultSet = mock(ResultSet.class);
         when(resultSet.getString("id")).thenReturn(id.toString());
+        when(resultSet.getString("user_id")).thenReturn(userId.toString());
         when(resultSet.getString("bootstrap_address")).thenReturn("localhost:29092");
         when(resultSet.getString("topic")).thenReturn("events");
         when(resultSet.getString("group_id")).thenReturn("group-2");
@@ -74,15 +77,26 @@ class ConsumersRepositoryTest {
         doAnswer(invocation -> {
             RowMapper<ConsumersRepository.ConsumerRecord> mapper = invocation.getArgument(1);
             assertThat(mapper.mapRow(resultSet, 0)).isEqualTo(new ConsumersRepository.ConsumerRecord(
-                    id, "localhost:29092", "events", "group-2", createdAt, ConsumerStatus.ERROR,
+                    id, userId, "localhost:29092", "events", "group-2", createdAt, ConsumerStatus.ERROR,
                     null, 4L, 12L));
             return expected;
         }).when(jdbcTemplate).query(anyString(), any(RowMapper.class));
 
         assertThat(repository.findAllConsumers()).isSameAs(expected);
-        verify(jdbcTemplate).query(eqSql("SELECT id, bootstrap_address", "ORDER BY created_at, id"),
+        verify(jdbcTemplate).query(eqSql("SELECT id, user_id, bootstrap_address", "ORDER BY created_at, id"),
                 any(RowMapper.class));
         verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    @Test
+    @DisplayName("loads consumers belonging to a user")
+    void findsConsumersByUser() {
+        UUID userId = UUID.randomUUID();
+        List<ConsumersRepository.ConsumerRecord> expected = List.of();
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(userId.toString()))).thenReturn(expected);
+
+        assertThat(repository.findConsumersByUser(userId)).isSameAs(expected);
+        verify(jdbcTemplate).query(eqSql("WHERE user_id = ?"), any(RowMapper.class), eq(userId.toString()));
     }
 
     @Test

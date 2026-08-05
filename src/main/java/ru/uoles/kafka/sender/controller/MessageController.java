@@ -13,6 +13,8 @@ import ru.uoles.kafka.sender.model.*;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 /**
  * REST-контроллер отправки сообщений в Kafka и проверки состояния сервиса.
@@ -96,10 +98,10 @@ public class MessageController {
      * @param request валидированный запрос с адресом брокера и названием топика
      * @return HTTP-ответ с данными созданного потребителя
      */
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('USER', 'MODERATOR', 'ADMIN')")
     @PostMapping("/consumers")
-    public ResponseEntity<ConsumerResponse> createConsumer(@Valid @RequestBody CreateConsumerRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(consumerManager.create(request.getBootstrapAddress(), request.getTopic()));
+    public ResponseEntity<ConsumerResponse> createConsumer(@Valid @RequestBody CreateConsumerRequest request, Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(consumerManager.create(userId(authentication), request.getBootstrapAddress(), request.getTopic()));
     }
 
     /**
@@ -107,10 +109,10 @@ public class MessageController {
      *
      * @return HTTP-ответ со списком потребителей
      */
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('USER', 'MODERATOR', 'ADMIN')")
     @GetMapping("/consumers")
-    public ResponseEntity<List<ConsumerResponse>> listConsumers() {
-        return ResponseEntity.ok(consumerManager.list());
+    public ResponseEntity<List<ConsumerResponse>> listConsumers(Authentication authentication) {
+        return ResponseEntity.ok(consumerManager.list(userId(authentication), isGlobal(authentication)));
     }
 
     /**
@@ -119,10 +121,10 @@ public class MessageController {
      * @param id уникальный идентификатор потребителя
      * @return HTTP-ответ с данными потребителя
      */
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('USER', 'MODERATOR', 'ADMIN')")
     @GetMapping("/consumers/{id}")
-    public ResponseEntity<ConsumerResponse> getConsumer(@PathVariable UUID id) {
-        return ResponseEntity.ok(consumerManager.get(id));
+    public ResponseEntity<ConsumerResponse> getConsumer(@PathVariable UUID id, Authentication authentication) {
+        return ResponseEntity.ok(consumerManager.get(id, userId(authentication), isGlobal(authentication)));
     }
 
     /**
@@ -133,12 +135,13 @@ public class MessageController {
      * @param limit максимальное количество возвращаемых сообщений
      * @return HTTP-ответ с сообщениями и метаданными курсора
      */
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('USER', 'MODERATOR', 'ADMIN')")
     @GetMapping("/consumers/{id}/messages")
     public ResponseEntity<ConsumerMessagesResponse> getConsumerMessages(@PathVariable UUID id,
                                                                           @RequestParam(defaultValue = "0") long after,
-                                                                          @RequestParam(defaultValue = "100") int limit) {
-        return ResponseEntity.ok(consumerManager.messages(id, after, limit));
+                                                                          @RequestParam(defaultValue = "100") int limit,
+                                                                          Authentication authentication) {
+        return ResponseEntity.ok(consumerManager.messages(id, userId(authentication), isGlobal(authentication), after, limit));
     }
 
     /**
@@ -147,11 +150,20 @@ public class MessageController {
      * @param id уникальный идентификатор удаляемого потребителя
      * @return пустой HTTP-ответ со статусом успешного удаления
      */
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('USER', 'MODERATOR', 'ADMIN')")
     @DeleteMapping("/consumers/{id}")
-    public ResponseEntity<Void> deleteConsumer(@PathVariable UUID id) {
-        consumerManager.delete(id);
+    public ResponseEntity<Void> deleteConsumer(@PathVariable UUID id, Authentication authentication) {
+        consumerManager.delete(id, userId(authentication), isGlobal(authentication));
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID userId(Authentication authentication) {
+        return UUID.fromString(((Jwt) authentication.getPrincipal()).getSubject());
+    }
+
+    private boolean isGlobal(Authentication authentication) {
+        return authentication.getAuthorities().stream().anyMatch(authority ->
+                authority.getAuthority().equals("ROLE_MODERATOR") || authority.getAuthority().equals("ROLE_ADMIN"));
     }
 
     /**
@@ -192,5 +204,4 @@ public class MessageController {
         );
         return ResponseEntity.ok(response);
     }
-
 }

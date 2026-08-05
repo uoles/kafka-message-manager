@@ -66,8 +66,11 @@ public class SecurityConfig {
                 .cors(cors -> { })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**", "/api/kafka/health", "/web/login", "/static/**", "/css/**", "/js/**").permitAll()
-                        .requestMatchers("/api/**", "/web/**").authenticated()
+                        .requestMatchers("/api/v1/auth/**", "/api/kafka/health", "/web/login", "/web/register", "/static/**", "/css/**", "/js/**").permitAll()
+                        // JWT хранится в sessionStorage и не может быть передан при навигации браузера к HTML.
+                        // Защищаем операции через API, а страницу используем как auth-aware shell.
+                        .requestMatchers("/api/**").hasAnyAuthority("ROLE_USER", "ROLE_MODERATOR", "ROLE_ADMIN")
+                        .requestMatchers("/web/**").permitAll()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .headers(headers -> headers
@@ -101,8 +104,7 @@ public class SecurityConfig {
 
     /** Создаёт decoder с проверкой issuer и audience. */
     @Bean
-    public JwtDecoder jwtDecoder(SecurityProperties properties, JwtEncoder encoder) {
-        KeyPair keyPair = keyPair(properties);
+    public JwtDecoder jwtDecoder(SecurityProperties properties, KeyPair keyPair) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey((RSAPublicKey) keyPair.getPublic()).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(properties.jwt().issuer()),

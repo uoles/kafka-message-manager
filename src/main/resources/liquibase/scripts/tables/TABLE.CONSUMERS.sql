@@ -18,3 +18,11 @@ CREATE TABLE IF NOT EXISTS consumers (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_consumers_group_id
     ON consumers(group_id);
 -- rollback DROP INDEX IF EXISTS idx_consumers_group_id;
+
+-- changeset kulikov-mv:20260805-003.TABLE.CONSUMERS_OWNER
+ALTER TABLE consumers ADD COLUMN user_id TEXT;
+-- rollback ALTER TABLE consumers DROP COLUMN user_id;
+
+-- changeset kulikov-mv:20260805-004.TABLE.CONSUMERS_OWNER_INDEX
+CREATE INDEX IF NOT EXISTS idx_consumers_user_id ON consumers(user_id);
+-- rollback DROP INDEX IF EXISTS idx_consumers_user_id;

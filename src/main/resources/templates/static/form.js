@@ -51,7 +51,7 @@ async function sendMessage(event) {
     formState.sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Sending...';
     const startTime = Date.now();
     try {
-        const response = await fetch('/api/kafka/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic, kafkaAddress, messageText, headers }) });
+        const response = await formApp.auth.authenticatedFetch('/api/kafka/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic, kafkaAddress, messageText, headers }) });
         const data = await response.json();
         const duration = Date.now() - startTime;
         formApp.history.addToHistory({ status: response.ok && data.status === 'success' ? 'success' : 'error', topic, kafkaAddress, headers, messageText, responseMessage: response.ok && data.status === 'success' ? `${data.message} (${duration}ms)` : (data.message || 'Unknown error'), timestamp: Date.now() });

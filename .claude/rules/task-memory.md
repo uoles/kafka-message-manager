@@ -1,6 +1,8 @@
 
 # Task Memory Rule
 
+**Must be doing after task completed!**
+
 When you complete a task or user asks to save task results:
 
 1. Create a memory file in `.claude/memory/{current_date}/`

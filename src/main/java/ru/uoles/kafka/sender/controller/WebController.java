@@ -12,6 +12,26 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public class WebController {
 
     /**
+     * Открывает страницу входа.
+     *
+     * @return имя Thymeleaf-шаблона страницы входа
+     */
+    @GetMapping("/login")
+    public String login() {
+        return "login";
+    }
+
+    /**
+     * Открывает страницу регистрации.
+     *
+     * @return имя Thymeleaf-шаблона страницы регистрации
+     */
+    @GetMapping("/register")
+    public String register() {
+        return "register";
+    }
+
+    /**
      * Открывает форму отправки сообщения.
      *
      * @return имя Thymeleaf-шаблона страницы

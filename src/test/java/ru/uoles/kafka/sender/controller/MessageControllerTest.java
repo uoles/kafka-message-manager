@@ -2,6 +2,7 @@ package ru.uoles.kafka.sender.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,10 +13,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +41,21 @@ import ru.uoles.kafka.sender.model.ConsumerResponse;
 @WebMvcTest(MessageController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class MessageControllerTest {
+
+    private static final UUID TEST_USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+    private static RequestPostProcessor userJwt() {
+        return request -> {
+            Jwt token = Jwt.withTokenValue("test-token")
+                    .header("alg", "none")
+                    .subject(TEST_USER_ID.toString())
+                    .claim("roles", List.of("ROLE_USER"))
+                    .build();
+            request.setUserPrincipal(new JwtAuthenticationToken(token,
+                    List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+            return request;
+        };
+    }
 
     private static final String SEND_BODY = """
             {
@@ -161,9 +183,10 @@ class MessageControllerTest {
         UUID id = UUID.randomUUID();
         ConsumerResponse response = new ConsumerResponse(id, "localhost:9092", "events", "group", ConsumerStatus.RUNNING,
                 Instant.parse("2026-01-01T00:00:00Z"), 0, 0, null);
-        when(consumerManager.create("localhost:9092", "events")).thenReturn(response);
+        when(consumerManager.create(TEST_USER_ID, "localhost:9092", "events")).thenReturn(response);
 
         mockMvc.perform(post("/api/kafka/consumers")
+                        .with(userJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"bootstrapAddress\":\"localhost:9092\",\"topic\":\"events\"}"))
                 .andExpect(status().isCreated())
@@ -171,89 +194,90 @@ class MessageControllerTest {
                 .andExpect(jsonPath("$.topic").value("events"))
                 .andExpect(jsonPath("$.status").value("RUNNING"));
 
-        verify(consumerManager).create("localhost:9092", "events");
+        verify(consumerManager).create(TEST_USER_ID, "localhost:9092", "events");
     }
 
     @Test
     void createConsumer_invalidRequest_returnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/kafka/consumers")
+                        .with(userJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"bootstrapAddress\":\"bad\",\"topic\":\"\"}"))
                 .andExpect(status().isBadRequest());
 
-        verify(consumerManager, never()).create(eq("bad"), eq(""));
+        verify(consumerManager, never()).create(any(UUID.class), eq("bad"), eq(""));
     }
 
     @Test
     void listConsumers_returnsManagerResult() throws Exception {
-        when(consumerManager.list()).thenReturn(List.of());
+        when(consumerManager.list(TEST_USER_ID, false)).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/kafka/consumers"))
+        mockMvc.perform(get("/api/kafka/consumers").with(userJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$").isEmpty());
 
-        verify(consumerManager).list();
+        verify(consumerManager).list(TEST_USER_ID, false);
     }
 
     @Test
     void getConsumer_returnsConsumer() throws Exception {
         UUID id = UUID.randomUUID();
-        when(consumerManager.get(id)).thenReturn(new ConsumerResponse(id, "localhost:9092", "events", "group",
+        when(consumerManager.get(id, TEST_USER_ID, false)).thenReturn(new ConsumerResponse(id, "localhost:9092", "events", "group",
                 ConsumerStatus.RUNNING, Instant.parse("2026-01-01T00:00:00Z"), 2, 1, null));
 
-        mockMvc.perform(get("/api/kafka/consumers/{id}", id))
+        mockMvc.perform(get("/api/kafka/consumers/{id}", id).with(userJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.bufferedCount").value(2));
 
-        verify(consumerManager).get(id);
+        verify(consumerManager).get(id, TEST_USER_ID, false);
     }
 
     @Test
     void getConsumerMessages_usesDefaultCursorAndLimit() throws Exception {
         UUID id = UUID.randomUUID();
         ConsumerMessagesResponse response = new ConsumerMessagesResponse(id, List.<ConsumerMessageResponse>of(), 1, 1, 0);
-        when(consumerManager.messages(id, 0, 100)).thenReturn(response);
+        when(consumerManager.messages(id, TEST_USER_ID, false, 0, 100)).thenReturn(response);
 
-        mockMvc.perform(get("/api/kafka/consumers/{id}/messages", id))
+        mockMvc.perform(get("/api/kafka/consumers/{id}/messages", id).with(userJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.consumerId").value(id.toString()))
                 .andExpect(jsonPath("$.messages").isEmpty());
 
-        verify(consumerManager).messages(id, 0, 100);
+        verify(consumerManager).messages(id, TEST_USER_ID, false, 0, 100);
     }
 
     @Test
     void getConsumerMessages_forwardsExplicitCursorAndLimit() throws Exception {
         UUID id = UUID.randomUUID();
-        when(consumerManager.messages(id, 25, 10))
+        when(consumerManager.messages(id, TEST_USER_ID, false, 25, 10))
                 .thenReturn(new ConsumerMessagesResponse(id, List.of(), 26, 26, 0));
 
-        mockMvc.perform(get("/api/kafka/consumers/{id}/messages?after=25&limit=10", id))
+        mockMvc.perform(get("/api/kafka/consumers/{id}/messages?after=25&limit=10", id).with(userJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nextSequence").value(26));
 
-        verify(consumerManager).messages(id, 25, 10);
+        verify(consumerManager).messages(id, TEST_USER_ID, false, 25, 10);
     }
 
     @Test
     void deleteConsumer_returnsNoContent() throws Exception {
         UUID id = UUID.randomUUID();
 
-        mockMvc.perform(delete("/api/kafka/consumers/{id}", id))
+        mockMvc.perform(delete("/api/kafka/consumers/{id}", id).with(userJwt()))
                 .andExpect(status().isNoContent())
                 .andExpect(jsonPath("$").doesNotExist());
 
-        verify(consumerManager).delete(id);
+        verify(consumerManager).delete(id, TEST_USER_ID, false);
     }
 
     @Test
     void getConsumer_notFound_returnsNotFoundResponse() throws Exception {
         UUID id = UUID.randomUUID();
-        when(consumerManager.get(id)).thenThrow(new ConsumerManager.ConsumerNotFoundException(id));
+        when(consumerManager.get(id, TEST_USER_ID, false)).thenThrow(new ConsumerManager.ConsumerNotFoundException(id));
 
-        mockMvc.perform(get("/api/kafka/consumers/{id}", id))
+        mockMvc.perform(get("/api/kafka/consumers/{id}", id).with(userJwt()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value("error"))
                 .andExpect(jsonPath("$.message").value("Consumer not found: " + id))
@@ -262,10 +286,11 @@ class MessageControllerTest {
 
     @Test
     void createConsumer_limitReached_returnsConflictResponse() throws Exception {
-        when(consumerManager.create("localhost:9092", "events"))
+        when(consumerManager.create(TEST_USER_ID, "localhost:9092", "events"))
                 .thenThrow(new ConsumerManager.ConsumerLimitException());
 
         mockMvc.perform(post("/api/kafka/consumers")
+                        .with(userJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"bootstrapAddress\":\"localhost:9092\",\"topic\":\"events\"}"))
                 .andExpect(status().isConflict())

@@ -36,14 +36,14 @@ curl http://localhost:8080/api/kafka/health
 
 The Maven build has no separate lint or formatting plugin. `spring-boot-starter-test` provides the JUnit 5, Mockito, AssertJ, and MockMvc stack; repository, service, and controller tests are under `src/test/java/ru/uoles/kafka/sender`, with controller tests using `@WebMvcTest` and mocked Kafka collaborators so they do not require Kafka or a database. Use a JDK 23 toolchain; `pom.xml` sets both compiler source and target to `23`.
 
-The Docker stack advertises Kafka to the host at `localhost:29092`, exposes Kafka UI at `http://localhost:8089/`, and uses `kafka:9092` for broker connections from other containers. The application listens on port `8080`. The web controller currently maps the UI under `/web/`, `/web/index`, and `/web/send-message`; the README's bare `/` URL is not mapped by `WebController`.
+The Docker stack advertises Kafka to the host at `localhost:29092`, exposes Kafka UI at `http://localhost:8089/`, and uses `kafka:9092` for broker connections from other containers. The application listens on port `8080`. The web controller maps public auth pages at `/web/login` and `/web/register`, and the protected UI under `/web/`, `/web/index`, and `/web/send-message`; the README's bare `/` URL is not mapped by `WebController`. The browser stores JWT state only in sessionStorage, sends bearer tokens through the shared auth wrapper, and clears token/user/history state on logout.
 
 ## Architecture
 
 ### Application and HTTP layers
 
 - `Application` is the Spring Boot entry point.
-- `MessageController` owns `/api/kafka` and delegates all Kafka operations to services/managers. Endpoints are:
+- `MessageController` owns `/api/kafka` and delegates all Kafka operations to services/managers. Consumer ownership is propagated from the JWT subject; `USER` access is restricted to their own consumers, while `MODERATOR` and `ADMIN` retain global consumer access. Endpoints are:
   - `POST /api/kafka/send` for a validated `MessageRequest` containing `topic`, `kafkaAddress`, `messageText`, and optional comma-separated `headers` (`name=value,name2=value2`).
   - `POST /api/kafka/consumers`, `GET /api/kafka/consumers`, and `GET /api/kafka/consumers/{id}` for dynamic consumer lifecycle and status.
   - `GET /api/kafka/consumers/{id}/messages?after=&limit=` for cursor-based message polling.
@@ -63,7 +63,7 @@ The broker address is intentionally request-scoped rather than a single applicat
 
 ### Persistence and response behavior
 
-Received consumer records are persisted by `ReceivedMessagesRepository` in the `received_messages` table, defined by `TABLE.RECEIVED_MESSAGES.sql`; this is separate from browser send history. Browser history is stored only in `localStorage` under `kafkaMessageHistory`. `MessageController` returns `MessageResponse` for sends, maps send failures to HTTP 500, and has a 400 handler for malformed header arguments when the exception reaches it. Bean-validation failures use Spring's default validation response because no dedicated validation handler is defined. Resend only repopulates the form and never sends automatically.
+Received consumer records are persisted by `ReceivedMessagesRepository` in the `received_messages` table, defined by `TABLE.RECEIVED_MESSAGES.sql`; this is separate from browser send history. Dynamic consumers store nullable `user_id` ownership in `consumers`; USER list/read/messages/delete operations are owner-scoped, while legacy null-owner rows remain available to elevated roles. Consumers use `latest` offset reset, so records published before assignment are not replayed. Browser history is stored only in `localStorage` under `kafkaMessageHistory`. `MessageController` returns `MessageResponse` for sends, maps send failures to HTTP 500, and has a 400 handler for malformed header arguments when the exception reaches it. Bean-validation failures use Spring's default validation response because no dedicated validation handler is defined. Resend only repopulates the form and never sends automatically.
 
 ### Dynamic consumers
 
@@ -97,7 +97,7 @@ The application does not persist browser send history on the server. The UI stor
 
 ### Authentication and authorization
 
-Users, roles, and user-role links are created by the Liquibase migration `TABLE.SECURITY.sql` in SQLite tables `users`, `roles`, and `user_roles`. Roles are stored as `USER`, `MODERATOR`, and `ADMIN` and mapped to Spring authorities with the `ROLE_` prefix. BCrypt is used for password hashing. API consumers must send a valid JWT in the `Authorization: Bearer` header; CSRF is disabled for this stateless bearer-token model. The initial security implementation generates an RSA key pair at startup when no external key material is configured, which is suitable only for local development because restarting invalidates tokens; production deployments must provide stable external signing keys and HTTPS.
+Users, roles, and user-role links are created by the Liquibase migration `TABLE.SECURITY.sql` in SQLite tables `users`, `roles`, and `user_roles`. Roles are stored as `USER`, `MODERATOR`, and `ADMIN` and mapped to Spring authorities with the `ROLE_` prefix. `USER` may create dynamic consumers; listing, inspection, message polling, and deletion remain restricted to `MODERATOR` and `ADMIN` until consumer ownership is implemented. BCrypt is used for password hashing. API consumers must send a valid JWT in the `Authorization: Bearer` header; CSRF is disabled for this stateless bearer-token model. The initial security implementation generates an RSA key pair at startup when no external key material is configured, which is suitable only for local development because restarting invalidates tokens; production deployments must provide stable external signing keys and HTTPS.
 
 Public authentication routes are `/api/v1/auth/register` and `/api/v1/auth/login`. `/api/kafka/health` remains public for health probes. Other `/api/**` and `/web/**` routes require authentication; role-specific restrictions should be added with method security as consumer ownership and the browser login flow are completed. Do not log passwords, password hashes, JWTs, signing keys, or authorization headers.
 - Do not assume `spring.kafka.producer.retries` affects dynamic producers; `KafkaMessageServiceImpl` supplies request-scoped properties directly.
