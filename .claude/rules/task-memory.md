@@ -1,7 +1,7 @@
 
 # Task Memory Rule
 
-**Must be doing after task completed!**
+**Must be doing after task or specification completed!**
 
 When you complete a task or user asks to save task results:
 
